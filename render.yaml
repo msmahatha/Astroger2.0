@@ -25,12 +25,12 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4o
       - key: TEMPERATURE
-        value: 0.4
+        value: "0.4"
       - key: MAX_TOKENS
-        value: 800
+        value: "800"
       - key: TOP_K
-        value: 4
+        value: "4"
       - key: MY_API_KEY
         sync: false
       - key: LANGSMITH_TRACING
-        value: false
+        value: "false"

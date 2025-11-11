@@ -1,13 +1,24 @@
 from dotenv import load_dotenv 
 import os
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+import sys
 
+load_dotenv()
+
+# Critical environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 API_KEY = os.getenv("MY_API_KEY")
 
+# Validate critical variables
+if not OPENAI_API_KEY:
+    print("ERROR: OPENAI_API_KEY environment variable is not set!")
+    sys.exit(1)
+if not API_KEY:
+    print("ERROR: MY_API_KEY environment variable is not set!")
+    sys.exit(1)
 
 
-OPENAI_MODEL=os.getenv("OPENAI_MODEL")
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Lower for more focused, professional responses
 TOP_K = int(os.getenv("TOP_K", "4"))
