@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: astrolozee-ai
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.8
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CHROMADB_API_KEY
+        sync: false
+      - key: CHROMADB_TENANT
+        sync: false
+      - key: CHROMADB_DB_NAME
+        value: Astrolozee
+      - key: COLLECTION_NAME
+        value: knowledge_base
+      - key: EMBED_MODEL
+        value: text-embedding-3-small
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: TEMPERATURE
+        value: 0.4
+      - key: MAX_TOKENS
+        value: 800
+      - key: TOP_K
+        value: 4
+      - key: MY_API_KEY
+        sync: false
+      - key: LANGSMITH_TRACING
+        value: false
