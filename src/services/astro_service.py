@@ -4,37 +4,28 @@ from typing import Optional
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.schema import HumanMessage
 from src.database.chroma_db import chromadb_retrieve
-from src.services.remedy_service import get_remedy
 from config import OPENAI_API_KEY, OPENAI_MODEL, EMBED_MODEL, TOP_K, TEMPERATURE, MAX_TOKENS
 from src.utils.helper import normalize_metadata, pack_retrieved_text, _unwrap_ai_message
-from src.prompts.astro_prompt import COMBINED_PROMPT_SIMPLE
-from src.models.prompt_model import AnswerOutput
-from langchain.output_parsers import PydanticOutputParser
-
-# ---------------- Output Parser ----------------
-output_parser = PydanticOutputParser(pydantic_object=AnswerOutput)
+from src.prompts.astro_prompt import get_comprehensive_prompt
+from langchain_core.output_parsers import JsonOutputParser
 
 # ---- Initialize LLM and Embeddings ----
 llm = ChatOpenAI(model=OPENAI_MODEL, api_key=OPENAI_API_KEY, temperature=TEMPERATURE, max_tokens=MAX_TOKENS)
 
-
 embeddings = OpenAIEmbeddings(model=EMBED_MODEL, api_key=OPENAI_API_KEY)
 
-
-# Fill format instructions automatically for parser
-COMBINED_PROMPT_SIMPLE = COMBINED_PROMPT_SIMPLE.partial(
-    format_instructions=output_parser.get_format_instructions()
-)
+# ---------------- Output Parser ----------------
+output_parser = JsonOutputParser()
 
 
 # ---------------- Main Processing Methods ----------------
-async def process_question_with_context(question: str, context: Optional[str] = None) -> dict:
+async def process_question_with_context(question: str, context: Optional[str] = None, religion: str = "hindu") -> dict:
     if not question or not isinstance(question, str):
         raise ValueError("Question must be a non-empty string.")
 
     try:
         
-        data = {"question": question, "context": context or ""}
+        data = {"question": question, "context": context or "", "religion": religion}
 
         # Step 1: Retrieval (question + context) concurrently
        
@@ -57,39 +48,50 @@ async def process_question_with_context(question: str, context: Optional[str] = 
 
     
 
-        # Step 2: Generate category + answer in **one LLM call**
+        # Step 2: Generate comprehensive astrological consultation with AI-generated remedies
+        combined_prompt = get_comprehensive_prompt(religion)
         
-        human_msg = HumanMessage(content=COMBINED_PROMPT_SIMPLE.format(
+        human_msg = HumanMessage(content=combined_prompt.format(
             question=data["question"],
-            retrieved_block=f"Retrieved texts:\n{data['retrieved_text']}" if data["retrieved_text"] else "",
-            context_block=data["context_block"]
+            retrieved_block=f"Retrieved Astrological Knowledge:\n{data['retrieved_text']}" if data["retrieved_text"] else "No specific knowledge retrieved. Use your expertise.",
+            context_block=data["context_block"] if data["context_block"] else "No additional context provided."
         ))
 
         combined_response = await llm.agenerate([[human_msg]])
         combined_text = combined_response.generations[0][0].text
        
+        logging.info(f"AI Response: {combined_text[:200]}...")
 
         # Step 3: Parse & validate JSON output
-       
         try:
-            parsed_output = output_parser.parse(combined_text)
-            data["category"] = parsed_output.category.title()
-            data["answer"] = parsed_output.answer
+            # Clean the response if it has markdown code blocks
+            clean_text = combined_text.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.startswith("```"):
+                clean_text = clean_text[3:]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
+            clean_text = clean_text.strip()
+            
+            parsed_output = output_parser.parse(clean_text)
+            
+            data["category"] = parsed_output.get("category", "General").title()
+            data["answer"] = parsed_output.get("answer", "I sense important energies surrounding your question. Please allow me to provide deeper insight in a moment.")
+            data["remedy"] = parsed_output.get("remedy", "Take time for reflection and meditation. Trust in the cosmic timing of your journey.")
+            
         except Exception as e:
-            logging.error(f"JSON parsing failed: {e}")
+            logging.error(f"JSON parsing failed: {e}. Response: {combined_text[:500]}")
+            # Fallback: try to extract from text
             data["category"] = "General"
             data["answer"] = _unwrap_ai_message(combined_text)
-        
-
-        # Step 4: Remedy lookup
-      
-        remedy = get_remedy(data.get("category"))
+            data["remedy"] = "I recommend taking time for spiritual reflection and meditation to gain clarity on this matter."
 
         return {
             "question": question,
             "category": data["category"],
             "answer": data["answer"],
-            "remedy": remedy,
+            "remedy": data["remedy"],
             "retrieved_sources": [normalize_metadata(d.get("metadata")) for d in data.get("retrieved_docs", [])],
         }
 
@@ -98,7 +100,7 @@ async def process_question_with_context(question: str, context: Optional[str] = 
         raise
 
 
-async def process_question(question: str, context: Optional[str] = None) -> dict:
+async def process_question(question: str, context: Optional[str] = None, religion: str = "hindu") -> dict:
     """
     Same as above but only question-based retrieval (no extra context)
     """
@@ -107,7 +109,7 @@ async def process_question(question: str, context: Optional[str] = None) -> dict
 
     try:
         
-        data = {"question": question, "context": context or ""}
+        data = {"question": question, "context": context or "", "religion": religion}
 
         # Step 1: Retrieval (question only)
         
@@ -121,41 +123,50 @@ async def process_question(question: str, context: Optional[str] = None) -> dict
 
     
 
-        # Step 2: Generate category + answer
+        # Step 2: Generate comprehensive astrological consultation with AI-generated remedies
+        combined_prompt = get_comprehensive_prompt(religion)
       
-        human_msg = HumanMessage(content=COMBINED_PROMPT_SIMPLE.format(
+        human_msg = HumanMessage(content=combined_prompt.format(
             question=data["question"],
-            retrieved_block=f"Retrieved texts:\n{data['retrieved_text']}" if data["retrieved_text"] else "",
-            context_block=data["context_block"]
+            retrieved_block=f"Retrieved Astrological Knowledge:\n{data['retrieved_text']}" if data["retrieved_text"] else "No specific knowledge retrieved. Use your expertise.",
+            context_block=data["context_block"] if data["context_block"] else "No additional context provided."
         ))
 
         combined_response = await llm.agenerate([[human_msg]])
         combined_text = combined_response.generations[0][0].text
     
-       
+        logging.info(f"AI Response: {combined_text[:200]}...")
 
         # Step 3: Parse & validate
-
         try:
-            parsed_output = output_parser.parse(combined_text)
-            data["category"] = parsed_output.category.title()
-            data["answer"] = parsed_output.answer
+            # Clean the response if it has markdown code blocks
+            clean_text = combined_text.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text[7:]
+            if clean_text.startswith("```"):
+                clean_text = clean_text[3:]
+            if clean_text.endswith("```"):
+                clean_text = clean_text[:-3]
+            clean_text = clean_text.strip()
+            
+            parsed_output = output_parser.parse(clean_text)
+            
+            data["category"] = parsed_output.get("category", "General").title()
+            data["answer"] = parsed_output.get("answer", "I sense important energies surrounding your question. Please allow me to provide deeper insight in a moment.")
+            data["remedy"] = parsed_output.get("remedy", "Take time for reflection and meditation. Trust in the cosmic timing of your journey.")
+            
         except Exception as e:
-            logging.error(f"JSON parsing failed: {e}")
+            logging.error(f"JSON parsing failed: {e}. Response: {combined_text[:500]}")
+            # Fallback: try to extract from text
             data["category"] = "General"
             data["answer"] = _unwrap_ai_message(combined_text)
-        
-        
-        # Step 4: Remedy lookup
-        
-        remedy = get_remedy(data.get("category"))
-        
+            data["remedy"] = "I recommend taking time for spiritual reflection and meditation to gain clarity on this matter."
 
         return {
             "question": question,
             "category": data["category"],
             "answer": data["answer"],
-            "remedy": remedy,
+            "remedy": data["remedy"],
             "retrieved_sources": [normalize_metadata(d.get("metadata")) for d in data.get("retrieved_docs", [])],
         }
 

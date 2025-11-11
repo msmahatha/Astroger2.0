@@ -9,10 +9,10 @@ API_KEY = os.getenv("MY_API_KEY")
 
 OPENAI_MODEL=os.getenv("OPENAI_MODEL")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.6"))
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Lower for more focused, professional responses
 TOP_K = int(os.getenv("TOP_K", "4"))
 
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "8000"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))  # Optimized for concise, professional consultations
 
 CHROMADB_API_KEY = os.getenv("CHROMADB_API_KEY", "")
 CHROMADB_TENANT = os.getenv("CHROMADB_TENANT", "")

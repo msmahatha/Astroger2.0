@@ -28,6 +28,7 @@ async def astro_rag_endpoint(
     - **question** (str, required): The user's question.
     - **context** (str, optional): Any additional context to help answer the question.
     - **rag_with_context** (bool): If `True`, context is used for retrieval as well.
+    - **religion** (str, optional): User's religion preference - one of: hindu, christian, muslim, buddhist, jain, sikh, secular. Defaults to "hindu".
    
 
     ### Behavior:
@@ -49,6 +50,7 @@ async def astro_rag_endpoint(
       "question": "How does Mars influence career prospects?",
       "context": "Consider Mars' position in the 10th house and its aspects with Jupiter.",
       "rag_with_context": true,
+      "religion": "hindu"
     }
     ```
 
@@ -69,6 +71,7 @@ async def astro_rag_endpoint(
         result = await process_question_with_context(
             question=payload.question,
             context=payload.context,
+            religion=payload.religion,
             # use_history=payload.use_history,
             # session_id=payload.session_id
         )
@@ -76,6 +79,7 @@ async def astro_rag_endpoint(
         result = await process_question(
             question=payload.question,
             context=payload.context,
+            religion=payload.religion,
             # use_history=payload.use_history,
             # session_id=payload.session_id
         )
