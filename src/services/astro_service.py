@@ -80,6 +80,27 @@ async def process_question_with_context(
         # Step 2: Generate comprehensive astrological consultation with AI-generated remedies
         combined_prompt = get_comprehensive_prompt(religion)
         
+        # PROGRAMMATIC REMEDY DETECTION - Check if user is requesting remedies
+        remedy_should_be_provided = False
+        context_lower = data.get("context", "").lower()
+        question_lower = data["question"].lower()
+        
+        # Check if conversation contains: timeline/analysis + affirmative + religion
+        has_timeline = any(word in context_lower for word in ["persist", "improvement", "resolution", "challenge", "planetary"])
+        has_affirmative = any(word in question_lower for word in ["yes", "remedies", "remedy", "help", "suggest", "share"])
+        has_religion = any(word in question_lower.lower() for word in ["hindu", "muslim", "christian", "sikh", "jain", "buddhist", "secular"])
+        
+        # If previous message asked "Would you like remedies?" and user responded
+        asked_for_remedies = "would you like" in context_lower and "remedies" in context_lower
+        
+        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)):
+            remedy_should_be_provided = True
+        
+        # Inject mandatory system signal if remedy should be provided
+        if remedy_should_be_provided:
+            system_override = f"\n\n[SYSTEM OVERRIDE - MANDATORY ACTION REQUIRED]\nUser has confirmed they want remedies for {religion.upper()} faith.\nYou MUST populate the 'remedy' field with comprehensive DOS/DON'TS/CHARITY content NOW.\nDo NOT leave remedy field empty. Do NOT ask more questions. PROVIDE REMEDIES IMMEDIATELY.\n"
+            data["context_block"] = data["context_block"] + system_override if data["context_block"] else system_override
+        
         human_msg = HumanMessage(content=combined_prompt.format(
             question=data["question"],
             retrieved_block=f"Retrieved Astrological Knowledge:\n{data['retrieved_text']}" if data["retrieved_text"] else "No specific knowledge retrieved. Use your expertise.",
@@ -118,6 +139,41 @@ async def process_question_with_context(
             data["category"] = parsed_output.get("category", "General").title()
             data["answer"] = parsed_output.get("answer", "I sense important energies surrounding your question. Please allow me to provide deeper insight in a moment.")
             data["remedy"] = parsed_output.get("remedy", "Take time for reflection and meditation. Trust in the cosmic timing of your journey.")
+            
+            # VALIDATION CHECK: If answer mentions remedies but remedy field is empty, this is an error
+            answer_lower = data["answer"].lower()
+            remedy_empty = not data["remedy"] or len(data["remedy"].strip()) < 20
+            mentions_remedies = any(word in answer_lower for word in ["here are remedies", "remedies aligned", "suggest remedies", "following remedies"])
+            
+            if remedy_empty and mentions_remedies:
+                logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
+                # Retry with explicit force
+                force_prompt = f"""[CRITICAL SYSTEM OVERRIDE]
+The user wants {religion.upper()} remedies NOW. You said "here are remedies" but provided NOTHING in the remedy field.
+
+You MUST generate comprehensive remedies following this structure:
+
+DOS (Practices to follow):
+1. [Specific practice with exact details]
+2. [Another practice]
+3. [Third practice]
+
+DON'TS (Things to avoid):
+1. [Specific thing to avoid]
+2. [Another thing to avoid]
+
+CHARITY (Donations/Service):
+1. [Specific charity with details]
+2. [Another charity work]
+
+Generate NOW. No more delays. No more empty fields."""
+                
+                retry_msg = HumanMessage(content=force_prompt)
+                retry_response = await llm.agenerate([[retry_msg]])
+                retry_text = retry_response.generations[0][0].text
+                
+                # Use the retry text as remedy
+                data["remedy"] = retry_text.strip()
             
         except Exception as e:
             logging.error(f"JSON parsing failed: {e}. Response: {combined_text[:500]}")
@@ -197,6 +253,27 @@ async def process_question(
 
         # Step 2: Generate comprehensive astrological consultation with AI-generated remedies
         combined_prompt = get_comprehensive_prompt(religion)
+        
+        # PROGRAMMATIC REMEDY DETECTION - Check if user is requesting remedies
+        remedy_should_be_provided = False
+        context_lower = data.get("context", "").lower()
+        question_lower = data["question"].lower()
+        
+        # Check if conversation contains: timeline/analysis + affirmative + religion
+        has_timeline = any(word in context_lower for word in ["persist", "improvement", "resolution", "challenge", "planetary"])
+        has_affirmative = any(word in question_lower for word in ["yes", "remedies", "remedy", "help", "suggest", "share"])
+        has_religion = any(word in question_lower.lower() for word in ["hindu", "muslim", "christian", "sikh", "jain", "buddhist", "secular"])
+        
+        # If previous message asked "Would you like remedies?" and user responded
+        asked_for_remedies = "would you like" in context_lower and "remedies" in context_lower
+        
+        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)):
+            remedy_should_be_provided = True
+        
+        # Inject mandatory system signal if remedy should be provided
+        if remedy_should_be_provided:
+            system_override = f"\n\n[SYSTEM OVERRIDE - MANDATORY ACTION REQUIRED]\nUser has confirmed they want remedies for {religion.upper()} faith.\nYou MUST populate the 'remedy' field with comprehensive DOS/DON'TS/CHARITY content NOW.\nDo NOT leave remedy field empty. Do NOT ask more questions. PROVIDE REMEDIES IMMEDIATELY.\n"
+            data["context_block"] = data["context_block"] + system_override if data["context_block"] else system_override
       
         human_msg = HumanMessage(content=combined_prompt.format(
             question=data["question"],
@@ -236,6 +313,41 @@ async def process_question(
             data["category"] = parsed_output.get("category", "General").title()
             data["answer"] = parsed_output.get("answer", "I sense important energies surrounding your question. Please allow me to provide deeper insight in a moment.")
             data["remedy"] = parsed_output.get("remedy", "Take time for reflection and meditation. Trust in the cosmic timing of your journey.")
+            
+            # VALIDATION CHECK: If answer mentions remedies but remedy field is empty, this is an error
+            answer_lower = data["answer"].lower()
+            remedy_empty = not data["remedy"] or len(data["remedy"].strip()) < 20
+            mentions_remedies = any(word in answer_lower for word in ["here are remedies", "remedies aligned", "suggest remedies", "following remedies"])
+            
+            if remedy_empty and mentions_remedies:
+                logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
+                # Retry with explicit force
+                force_prompt = f"""[CRITICAL SYSTEM OVERRIDE]
+The user wants {religion.upper()} remedies NOW. You said "here are remedies" but provided NOTHING in the remedy field.
+
+You MUST generate comprehensive remedies following this structure:
+
+DOS (Practices to follow):
+1. [Specific practice with exact details]
+2. [Another practice]
+3. [Third practice]
+
+DON'TS (Things to avoid):
+1. [Specific thing to avoid]
+2. [Another thing to avoid]
+
+CHARITY (Donations/Service):
+1. [Specific charity with details]
+2. [Another charity work]
+
+Generate NOW. No more delays. No more empty fields."""
+                
+                retry_msg = HumanMessage(content=force_prompt)
+                retry_response = await llm.agenerate([[retry_msg]])
+                retry_text = retry_response.generations[0][0].text
+                
+                # Use the retry text as remedy
+                data["remedy"] = retry_text.strip()
             
         except Exception as e:
             logging.error(f"JSON parsing failed: {e}. Response: {combined_text[:500]}")
