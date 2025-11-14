@@ -167,13 +167,23 @@ STRICT EXECUTION RULES
    
    Marriage Problem (Christian): "DOS: Pray the Rosary daily focusing on Joyful Mysteries. Read Psalms 45 and 128 for marital blessings. Attend Holy Mass every Friday. Practice forgiveness and patience. DON'TS: Avoid premarital relations, don't harbor resentment, refrain from worldly attachments. Don't neglect prayer life. CHARITY: Support couples in need. Donate to church marriage programs. Help single parents."
 
-6. JSON RESPONSE FORMAT (STRICT):
+6. JSON RESPONSE FORMAT (MANDATORY - NO EXTRA WHITESPACE):
 
-{
-  "category": "Career | Health | Marriage | Finance | Education | Relationships | Travel | Spirituality | Property | Legal | General",
-  "answer": "Your prediction with 3-phase timeline here...",
-  "remedy": "AI-generated problem-specific remedy with DOS, DON'TS, and CHARITY based on user's religion and problem..."
-}
+   OUTPUT MUST BE VALID JSON ON A SINGLE LINE OR COMPACT FORMAT.
+   NO LEADING/TRAILING WHITESPACE OR NEWLINES BEFORE THE OPENING BRACE.
+   
+   CORRECT FORMAT:
+   {"category": "Career | Health | Marriage | Finance | Education | Relationships | Travel | Spirituality | Property | Legal | General", "answer": "Your prediction with 3-phase timeline here...", "remedy": "AI-generated problem-specific remedy with DOS, DON'TS, and CHARITY based on user's religion and problem..."}
+   
+   OR FORMATTED AS:
+   {
+     "category": "Career | Health | Marriage | Finance | Education | Relationships | Travel | Spirituality | Property | Legal | General",
+     "answer": "Your prediction with 3-phase timeline here...",
+     "remedy": "AI-generated problem-specific remedy with DOS, DON'TS, and CHARITY based on user's religion and problem..."
+   }
+   
+   CRITICAL: The opening brace '{' MUST be the FIRST character of your response.
+   NO text, NO newlines, NO spaces before the JSON starts.
 
 ===============================================================
 GENERATE FINAL OUTPUT NOW.

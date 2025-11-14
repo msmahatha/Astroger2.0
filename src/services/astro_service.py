@@ -93,7 +93,7 @@ async def process_question_with_context(
 
         # Step 3: Parse & validate JSON output
         try:
-            # Clean the response if it has markdown code blocks
+            # Clean the response if it has markdown code blocks or extra whitespace
             clean_text = combined_text.strip()
             if clean_text.startswith("```json"):
                 clean_text = clean_text[7:]
@@ -102,6 +102,16 @@ async def process_question_with_context(
             if clean_text.endswith("```"):
                 clean_text = clean_text[:-3]
             clean_text = clean_text.strip()
+            
+            # Remove any leading newlines or whitespace before JSON
+            import re
+            clean_text = re.sub(r'^\s+', '', clean_text)
+            
+            # If response doesn't start with {, try to find the first {
+            if not clean_text.startswith('{'):
+                json_start = clean_text.find('{')
+                if json_start != -1:
+                    clean_text = clean_text[json_start:]
             
             parsed_output = output_parser.parse(clean_text)
             
@@ -201,7 +211,7 @@ async def process_question(
 
         # Step 3: Parse & validate
         try:
-            # Clean the response if it has markdown code blocks
+            # Clean the response if it has markdown code blocks or extra whitespace
             clean_text = combined_text.strip()
             if clean_text.startswith("```json"):
                 clean_text = clean_text[7:]
@@ -210,6 +220,16 @@ async def process_question(
             if clean_text.endswith("```"):
                 clean_text = clean_text[:-3]
             clean_text = clean_text.strip()
+            
+            # Remove any leading newlines or whitespace before JSON
+            import re
+            clean_text = re.sub(r'^\s+', '', clean_text)
+            
+            # If response doesn't start with {, try to find the first {
+            if not clean_text.startswith('{'):
+                json_start = clean_text.find('{')
+                if json_start != -1:
+                    clean_text = clean_text[json_start:]
             
             parsed_output = output_parser.parse(clean_text)
             
