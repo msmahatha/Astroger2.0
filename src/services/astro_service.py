@@ -90,15 +90,18 @@ async def process_question_with_context(
         has_affirmative = any(word in question_lower for word in ["yes", "remedies", "remedy", "help", "suggest", "share"])
         has_religion = any(word in question_lower.lower() for word in ["hindu", "muslim", "christian", "sikh", "jain", "buddhist", "secular"])
         
-        # If previous message asked "Would you like remedies?" and user responded
-        asked_for_remedies = "would you like" in context_lower and "remedies" in context_lower
+        # If previous message asked "Would you like remedies?" OR already said "here are remedies"
+        asked_for_remedies = ("would you like" in context_lower and "remedies" in context_lower) or ("here are remedies" in context_lower) or ("remedies aligned" in context_lower)
         
-        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)):
+        # AGGRESSIVE DETECTION: If user JUST typed a religion name (short question), treat as remedy request
+        religion_only_response = len(question_lower.strip().split()) <= 2 and has_religion
+        
+        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)) or religion_only_response:
             remedy_should_be_provided = True
         
         # Inject mandatory system signal if remedy should be provided
         if remedy_should_be_provided:
-            system_override = f"\n\n[SYSTEM OVERRIDE - MANDATORY ACTION REQUIRED]\nUser has confirmed they want remedies for {religion.upper()} faith.\nYou MUST populate the 'remedy' field with comprehensive DOS/DON'TS/CHARITY content NOW.\nDo NOT leave remedy field empty. Do NOT ask more questions. PROVIDE REMEDIES IMMEDIATELY.\n"
+            system_override = f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\nUser has specified {religion.upper()} religion and wants remedies NOW.\nYou MUST populate the 'remedy' field with comprehensive {religion.upper()} remedies immediately.\nStructure: DOS (3-4 practices), DON'TS (2-3 things to avoid), CHARITY (2-3 specific donations).\nDo NOT write 'Based on your situation, here are remedies aligned with your faith' - GO DIRECTLY TO THE REMEDIES.\nDo NOT leave remedy field empty. Do NOT ask questions. PROVIDE FULL REMEDIES NOW.\n"
             data["context_block"] = data["context_block"] + system_override if data["context_block"] else system_override
         
         human_msg = HumanMessage(content=combined_prompt.format(
@@ -144,6 +147,10 @@ async def process_question_with_context(
             answer_lower = data["answer"].lower()
             remedy_empty = not data["remedy"] or len(data["remedy"].strip()) < 20
             mentions_remedies = any(word in answer_lower for word in ["here are remedies", "remedies aligned", "suggest remedies", "following remedies"])
+            
+            # If answer contains placeholder text, remove it and replace with simple confirmation
+            if "based on your situation, here are remedies aligned with your faith" in answer_lower:
+                data["answer"] = f"Here are comprehensive {religion.title()} remedies for your situation:"
             
             if remedy_empty and mentions_remedies:
                 logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
@@ -264,15 +271,18 @@ async def process_question(
         has_affirmative = any(word in question_lower for word in ["yes", "remedies", "remedy", "help", "suggest", "share"])
         has_religion = any(word in question_lower.lower() for word in ["hindu", "muslim", "christian", "sikh", "jain", "buddhist", "secular"])
         
-        # If previous message asked "Would you like remedies?" and user responded
-        asked_for_remedies = "would you like" in context_lower and "remedies" in context_lower
+        # If previous message asked "Would you like remedies?" OR already said "here are remedies"
+        asked_for_remedies = ("would you like" in context_lower and "remedies" in context_lower) or ("here are remedies" in context_lower) or ("remedies aligned" in context_lower)
         
-        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)):
+        # AGGRESSIVE DETECTION: If user JUST typed a religion name (short question), treat as remedy request
+        religion_only_response = len(question_lower.strip().split()) <= 2 and has_religion
+        
+        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)) or religion_only_response:
             remedy_should_be_provided = True
         
         # Inject mandatory system signal if remedy should be provided
         if remedy_should_be_provided:
-            system_override = f"\n\n[SYSTEM OVERRIDE - MANDATORY ACTION REQUIRED]\nUser has confirmed they want remedies for {religion.upper()} faith.\nYou MUST populate the 'remedy' field with comprehensive DOS/DON'TS/CHARITY content NOW.\nDo NOT leave remedy field empty. Do NOT ask more questions. PROVIDE REMEDIES IMMEDIATELY.\n"
+            system_override = f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\nUser has specified {religion.upper()} religion and wants remedies NOW.\nYou MUST populate the 'remedy' field with comprehensive {religion.upper()} remedies immediately.\nStructure: DOS (3-4 practices), DON'TS (2-3 things to avoid), CHARITY (2-3 specific donations).\nDo NOT write 'Based on your situation, here are remedies aligned with your faith' - GO DIRECTLY TO THE REMEDIES.\nDo NOT leave remedy field empty. Do NOT ask questions. PROVIDE FULL REMEDIES NOW.\n"
             data["context_block"] = data["context_block"] + system_override if data["context_block"] else system_override
       
         human_msg = HumanMessage(content=combined_prompt.format(
@@ -318,6 +328,10 @@ async def process_question(
             answer_lower = data["answer"].lower()
             remedy_empty = not data["remedy"] or len(data["remedy"].strip()) < 20
             mentions_remedies = any(word in answer_lower for word in ["here are remedies", "remedies aligned", "suggest remedies", "following remedies"])
+            
+            # If answer contains placeholder text, remove it and replace with simple confirmation
+            if "based on your situation, here are remedies aligned with your faith" in answer_lower:
+                data["answer"] = f"Here are comprehensive {religion.title()} remedies for your situation:"
             
             if remedy_empty and mentions_remedies:
                 logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
