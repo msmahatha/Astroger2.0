@@ -50,42 +50,43 @@ def get_comprehensive_prompt(religion: str = "hindu"):
     
     guidance = remedy_guidance.get(religion.lower(), remedy_guidance["secular"])
     
-    return ChatPromptTemplate.from_template(
-        f"""
-{context}
+    # Build the template string with proper escaping
+    template = context + """
 
 User Question:
-{{question}}
+{question}
 
 Retrieved Astrological Knowledge:
-{{retrieved_block}}
+{retrieved_block}
 
 Additional User Context:
-{{context_block}}
+{context_block}
 
 CRITICAL RULES:
 1. You MUST use ONLY the data in retrieved_block and context_block
-2. If data is missing or contradictory, respond with: {{"category": "General", "answer": "INSUFFICIENT_DATA", "remedy": "Please provide your birth details for accurate guidance."}}
+2. If data is missing or contradictory, respond with JSON: """ + '{"category": "General", "answer": "INSUFFICIENT_DATA", "remedy": "Please provide your birth details for accurate guidance."}' + """
 3. Do NOT invent, assume, or hallucinate any information
 4. Keep responses under 50 words for answer, 40 words for remedy
+5. """ + guidance + """
 
 Generate a JSON response with this EXACT structure:
 
-{{{{
+{
   "category": "one of: Career, Health, Marriage, Finance, Education, Relationships, Travel, Spirituality, Property, Legal",
-  "answer": "1-2 sentences maximum. State the key astrological finding directly. {guidance}",
+  "answer": "1-2 sentences maximum. State the key astrological finding directly.",
   "remedy": "1-2 sentences. Provide specific actionable remedy with timing. End with [Confidence: High|Med|Low]"
-}}}}
+}
 
 EXAMPLE (Hindu):
-{{{{
+{
   "category": "Career",
   "answer": "Jupiter in 10th house brings professional growth and authority in leadership roles. Saturn's aspect creates delays but ensures long-term success through disciplined effort.",
   "remedy": "Chant Guru mantra 108 times on Thursdays at sunrise. Wear yellow sapphire after consulting astrologer. [Confidence: High]"
-}}}}
+}
 
 Generate the JSON response now. Be concise, accurate, and professional.
 """
-    )
+    
+    return ChatPromptTemplate.from_template(template)
 
 
