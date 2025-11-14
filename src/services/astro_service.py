@@ -42,11 +42,19 @@ async def process_question_with_context(
         if session_id and (not data.get("context") or use_history):
             session_ctx = get_session_context(session_id)
             if session_ctx:
+                # Check if this is a returning conversation (has chat history)
+                has_chat_history = "User:" in session_ctx and "AI:" in session_ctx
                 # If explicit context existed, append session context for retrieval/use
                 if data.get("context"):
-                    data["context"] = data["context"] + "\n\n" + session_ctx
+                    if has_chat_history:
+                        data["context"] = f"[RETURNING CONVERSATION - DO NOT GREET AGAIN]\n{data['context']}\n\n{session_ctx}"
+                    else:
+                        data["context"] = data["context"] + "\n\n" + session_ctx
                 else:
-                    data["context"] = session_ctx
+                    if has_chat_history:
+                        data["context"] = f"[RETURNING CONVERSATION - DO NOT GREET AGAIN]\n{session_ctx}"
+                    else:
+                        data["context"] = session_ctx
 
         # Step 1: Retrieval (question + context) concurrently
        
@@ -152,10 +160,18 @@ async def process_question(
         if session_id and (not data.get("context") or use_history):
             session_ctx = get_session_context(session_id)
             if session_ctx:
+                # Check if this is a returning conversation (has chat history)
+                has_chat_history = "User:" in session_ctx and "AI:" in session_ctx
                 if data.get("context"):
-                    data["context"] = data["context"] + "\n\n" + session_ctx
+                    if has_chat_history:
+                        data["context"] = f"[RETURNING CONVERSATION - DO NOT GREET AGAIN]\n{data['context']}\n\n{session_ctx}"
+                    else:
+                        data["context"] = data["context"] + "\n\n" + session_ctx
                 else:
-                    data["context"] = session_ctx
+                    if has_chat_history:
+                        data["context"] = f"[RETURNING CONVERSATION - DO NOT GREET AGAIN]\n{session_ctx}"
+                    else:
+                        data["context"] = session_ctx
 
         # Step 1: Retrieval (question only)
         
