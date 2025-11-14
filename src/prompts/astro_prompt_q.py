@@ -1,100 +1,108 @@
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-
-# Religion-specific system messages
-RELIGION_SYSTEM_MESSAGES = {
-    "hindu": "You are a highly skilled Vedic astrology expert. Answer kindly and with deep spiritual wisdom.",
-    "christian": "You are a highly skilled astrology expert with knowledge of Christian mysticism. Answer kindly with spiritual wisdom.",
-    "muslim": "You are a highly skilled astrology expert knowledgeable in Islamic teachings. Answer kindly with spiritual wisdom.",
-    "buddhist": "You are a highly skilled astrology expert with deep understanding of Buddhist philosophy. Answer kindly with mindfulness and compassion.",
-    "jain": "You are a highly skilled astrology expert knowledgeable in Jain philosophy. Answer kindly with spiritual wisdom.",
-    "sikh": "You are a highly skilled astrology expert familiar with Sikh teachings. Answer kindly with spiritual wisdom.",
-    "secular": "You are a highly skilled astrology expert. Answer kindly with universal spiritual wisdom."
-}
-
-# Define system message (shared by both chains) - default to Hindu for backward compatibility
-system_message = SystemMessagePromptTemplate.from_template(
-    RELIGION_SYSTEM_MESSAGES["hindu"]
+from langchain.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate
 )
 
-def get_system_message(religion: str = "hindu"):
-    """Get religion-specific system message"""
-    message_text = RELIGION_SYSTEM_MESSAGES.get(religion.lower(), RELIGION_SYSTEM_MESSAGES["secular"])
-    return SystemMessagePromptTemplate.from_template(message_text)
+"""
+===============================================================
+        PRODUCTION-GRADE ASTROLOGY PROMPT CONFIG
+===============================================================
+STRICT FEATURES:
+•  No AI identity mentions
+•  No hallucination allowed: LLM can ONLY use retrieved_block
+•  1–2 sentence outputs, max ~40 words
+•  Religion-dependent remedy rules
+•  Confidence token enforcement
+•  Fallback "INSUFFICIENT_DATA" mode
+===============================================================
+"""
 
-# Category prompt
+# -------------------------------------------------------------
+# Religion-specific system messages (strict, safe, optimized)
+# -------------------------------------------------------------
+RELIGION_SYSTEM_MESSAGES = {
+    "hindu":
+        "You are a concise Vedic astrology advisor. Use only the data in retrieved_block. Do not guess. Give one short accurate answer with Hindu-appropriate remedies. No lists. No emojis. End with [Confidence: High|Med|Low].",
+    "muslim":
+        "You are a concise astrology advisor aligned with Islamic practice. Use only retrieved_block. Give one short accurate answer with Islamic remedies only. No lists. No emojis. End with [Confidence: High|Med|Low].",
+    "christian":
+        "You are a concise astrology advisor aligned with Christian values. Use only retrieved_block. Provide one short accurate answer with Christian-appropriate guidance. No lists. No emojis. End with [Confidence: High|Med|Low].",
+    "buddhist":
+        "You are a concise astrology advisor aligned with Buddhist mindfulness. Use only retrieved_block. Provide one short accurate answer. No lists. No emojis. End with [Confidence: High|Med|Low].",
+    "jain":
+        "You are a concise astrology advisor aligned with Jain philosophy. Use only retrieved_block. Provide one short accurate answer. No lists. No emojis. End with [Confidence: High|Med|Low].",
+    "sikh":
+        "You are a concise astrology advisor aligned with Sikh teachings. Use only retrieved_block. Provide one short accurate answer. No lists. No emojis. End with [Confidence: High|Med|Low].",
+    "secular":
+        "You are a concise astrology advisor. Use only retrieved_block. Provide one short accurate answer. No lists. No emojis. End with [Confidence: High|Med|Low]."
+}
+
+def get_system_message(religion: str = "hindu"):
+    """Return strict religion-based system message."""
+    msg = RELIGION_SYSTEM_MESSAGES.get(religion.lower(), RELIGION_SYSTEM_MESSAGES["secular"])
+    return SystemMessagePromptTemplate.from_template(msg)
+
+# default (backward compatible)
+system_message = get_system_message("hindu")
+
+# -------------------------------------------------------------
+# CATEGORY CLASSIFIER (extremely strict)
+# -------------------------------------------------------------
 category_human_message = HumanMessagePromptTemplate.from_template(
     """
-Classify the user's question into one of the following categories:
-
+Classify the user's question into exactly one category:
 Career, Health, Marriage, Finance, Education, Relationships, Travel, Spirituality, Property, Legal
 
 Question: {question}
 
-Respond with only the category name. Do not explain.
+Respond ONLY with the category token.
 """
 )
 
 def get_category_prompt(religion: str = "hindu"):
-    """Get religion-specific category prompt"""
     sys_msg = get_system_message(religion)
     return ChatPromptTemplate.from_messages([sys_msg, category_human_message])
 
-CATEGORY_PROMPT_Q = ChatPromptTemplate.from_messages(
-    [system_message, category_human_message]
-)
+CATEGORY_PROMPT_Q = ChatPromptTemplate.from_messages([system_message, category_human_message])
 
-# Religion-specific astrological guidance
+# -------------------------------------------------------------
+# Main Answer Prompt — single-paragraph, 40-word max
+# -------------------------------------------------------------
 RELIGION_ASTRO_GUIDANCE = {
-    "hindu": "Based on classical Vedic astrology principles — including planetary positions, house interpretations, and yogas — provide a detailed yet compassionate response.",
-    "christian": "Based on astrological principles and Christian spiritual wisdom, provide a detailed yet compassionate response.",
-    "muslim": "Based on astrological principles that align with Islamic values, provide a detailed yet compassionate response.",
-    "buddhist": "Based on astrological principles and Buddhist concepts of karma and mindfulness, provide a detailed yet compassionate response.",
-    "jain": "Based on astrological principles and Jain philosophy of right conduct and non-violence, provide a detailed yet compassionate response.",
-    "sikh": "Based on astrological principles and Sikh teachings of truth and equality, provide a detailed yet compassionate response.",
-    "secular": "Based on astrological principles and universal spiritual wisdom, provide a detailed yet compassionate response."
+    "hindu": "Use calculated planetary positions, transits, dasha and Hindu-compatible remedies.",
+    "muslim": "Use calculated planetary positions, transits, and only Islamic-compliant remedies.",
+    "christian": "Use calculated planetary positions, transits, and Christian-appropriate guidance.",
+    "buddhist": "Use calculated planetary positions and Buddhist-aligned reflection.",
+    "jain": "Use calculated planetary positions and Jain-suitable ethical guidance.",
+    "sikh": "Use calculated planetary positions and Sikh-aligned principles.",
+    "secular": "Use calculated planetary positions and universal guidance."
 }
 
-# Answer prompt
 def get_answer_human_message(religion: str = "hindu"):
-    """Get religion-specific answer prompt"""
     guidance = RELIGION_ASTRO_GUIDANCE.get(religion.lower(), RELIGION_ASTRO_GUIDANCE["secular"])
-    
+
     return HumanMessagePromptTemplate.from_template(
-        f"""
-The user has asked a question in the category: "{{category}}".
+f"""
+You MUST use only the deterministic astrology data provided in {{retrieved_block}} and context in {{context_block}}.
+If data is missing or contradictory, respond EXACTLY with: INSUFFICIENT_DATA.
 
-Question:
-"{{question}}"
+Provide ONE short paragraph of maximum two sentences and under 40 words.
+Do not repeat the question.
+Do not use lists, emojis, or extra commentary.
+Do not add assumptions or invented details.
 
-Here is the retrieved information you have about the user:
-{{retrieved_block}}
+{guidance}
 
-Here is the user's additional context (if any):
-{{context_block}}
-
-{guidance} Write as if you are gently guiding the user with spiritual wisdom.
-
-Please follow these guidelines:
-- Do not repeat the question or context word-for-word, but use them naturally.
-- Do not mention that you are an AI.
-- Do not use bullet points, tables, or lists.
-- Write in 3–4 natural paragraphs with smooth flow.
-- Use soft, empathetic, and uplifting language.
-- Mention relevant astrological factors (planets, houses, aspects) if applicable.
-- Provide safe, culturally appropriate guidance and remedies that align with the user's {religion} background.
-
-End with a spiritually grounded and hopeful note.
+End the answer with a bracketed confidence tag: [Confidence: High] or [Confidence: Med] or [Confidence: Low].
 """
     )
 
 answer_human_message = get_answer_human_message("hindu")
 
 def get_answer_prompt(religion: str = "hindu"):
-    """Get religion-specific answer prompt"""
     sys_msg = get_system_message(religion)
     ans_msg = get_answer_human_message(religion)
     return ChatPromptTemplate.from_messages([sys_msg, ans_msg])
 
-ANSWER_PROMPT_Q = ChatPromptTemplate.from_messages(
-    [system_message, answer_human_message]
-)
+ANSWER_PROMPT_Q = ChatPromptTemplate.from_messages([system_message, answer_human_message])
