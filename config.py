@@ -20,10 +20,10 @@ if not API_KEY:
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Lower for more focused, professional responses
-TOP_K = int(os.getenv("TOP_K", "4"))
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.2"))  # Very low for data-focused, minimal hallucination
+TOP_K = int(os.getenv("TOP_K", "5"))  # Retrieve more context for better data coverage
 
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))  # Optimized for concise, professional consultations
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))  # Optimized for detailed, data-driven consultations
 
 CHROMADB_API_KEY = os.getenv("CHROMADB_API_KEY", "")
 CHROMADB_TENANT = os.getenv("CHROMADB_TENANT", "")
