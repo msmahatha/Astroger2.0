@@ -67,24 +67,31 @@ async def astro_rag_endpoint(
     }
     ```
     """
-    if payload.rag_with_context:
-        result = await process_question_with_context(
-            question=payload.question,
-            context=payload.context,
-            religion=payload.religion,
-            # use_history=payload.use_history,
-            # session_id=payload.session_id
-        )
-    else:
-        result = await process_question(
-            question=payload.question,
-            context=payload.context,
-            religion=payload.religion,
-            # use_history=payload.use_history,
-            # session_id=payload.session_id
-        )
+    try:
+        if payload.rag_with_context:
+            result = await process_question_with_context(
+                question=payload.question,
+                context=payload.context,
+                religion=payload.religion,
+                # use_history=payload.use_history,
+                # session_id=payload.session_id
+            )
+        else:
+            result = await process_question(
+                question=payload.question,
+                context=payload.context,
+                religion=payload.religion,
+                # use_history=payload.use_history,
+                # session_id=payload.session_id
+            )
 
-    return AIResponses(**result)
+        return AIResponses(**result)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"ERROR in astro_rag_endpoint: {str(e)}")
+        print(f"Traceback:\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @router.post("/generate", response_model=KundliResponse)
