@@ -73,16 +73,16 @@ async def astro_rag_endpoint(
                 question=payload.question,
                 context=payload.context,
                 religion=payload.religion,
-                # use_history=payload.use_history,
-                # session_id=payload.session_id
+                session_id=payload.session_id,
+                use_history=payload.use_history,
             )
         else:
             result = await process_question(
                 question=payload.question,
                 context=payload.context,
                 religion=payload.religion,
-                # use_history=payload.use_history,
-                # session_id=payload.session_id
+                session_id=payload.session_id,
+                use_history=payload.use_history,
             )
 
         return AIResponses(**result)

@@ -6,8 +6,8 @@ class AIRequests(BaseModel):
     context: Optional[str] = None
     rag_with_context: Optional[bool] = False  # default to False
     religion: Optional[Literal["hindu", "christian", "muslim", "buddhist", "jain", "sikh", "secular"]] = "hindu"  # default to hindu for backward compatibility
-    # use_history: Optional[bool] = False
-    # session_id: Optional[str] = None
+    use_history: Optional[bool] = False
+    session_id: Optional[str] = None
 
 
 class AIResponses(BaseModel):
