@@ -148,9 +148,9 @@ async def process_question_with_context(
             remedy_empty = not data["remedy"] or len(data["remedy"].strip()) < 20
             mentions_remedies = any(word in answer_lower for word in ["here are remedies", "remedies aligned", "suggest remedies", "following remedies"])
             
-            # If answer contains placeholder text, remove it and replace with simple confirmation
-            if "based on your situation, here are remedies aligned with your faith" in answer_lower:
-                data["answer"] = f"Here are comprehensive {religion.title()} remedies for your situation:"
+            # If remedy field is populated, clear the answer field to show only remedies
+            if not remedy_empty and data["remedy"]:
+                data["answer"] = ""
             
             if remedy_empty and mentions_remedies:
                 logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
@@ -329,9 +329,9 @@ async def process_question(
             remedy_empty = not data["remedy"] or len(data["remedy"].strip()) < 20
             mentions_remedies = any(word in answer_lower for word in ["here are remedies", "remedies aligned", "suggest remedies", "following remedies"])
             
-            # If answer contains placeholder text, remove it and replace with simple confirmation
-            if "based on your situation, here are remedies aligned with your faith" in answer_lower:
-                data["answer"] = f"Here are comprehensive {religion.title()} remedies for your situation:"
+            # If remedy field is populated, clear the answer field to show only remedies
+            if not remedy_empty and data["remedy"]:
+                data["answer"] = ""
             
             if remedy_empty and mentions_remedies:
                 logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
