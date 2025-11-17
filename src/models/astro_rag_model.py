@@ -8,6 +8,7 @@ class AIRequests(BaseModel):
     religion: Optional[Literal["hindu", "christian", "muslim", "buddhist", "jain", "sikh", "secular"]] = "hindu"  # default to hindu for backward compatibility
     use_history: Optional[bool] = False
     session_id: Optional[str] = None
+    user_name: Optional[str] = None  # User's name from the QnA section
 
 
 class AIResponses(BaseModel):

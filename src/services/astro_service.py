@@ -30,6 +30,7 @@ async def process_question_with_context(
     religion: str = "hindu",
     session_id: Optional[str] = None,
     use_history: bool = False,
+    user_name: Optional[str] = None,
 ) -> dict:
     if not question or not isinstance(question, str):
         raise ValueError("Question must be a non-empty string.")
@@ -73,36 +74,43 @@ async def process_question_with_context(
         combined_docs = list(combined_docs_map.values())
         data["retrieved_docs"] = combined_docs
         data["retrieved_text"] = pack_retrieved_text(data["retrieved_docs"])
-        data["context_block"] = f"Additional Context:\n{data['context']}" if data.get("context") else ""
+        
+        # Build context_block with user_name if provided
+        context_parts = []
+        if user_name:
+            context_parts.append(f"User Name: {user_name}")
+        if data.get("context"):
+            context_parts.append(f"Additional Context:\n{data['context']}")
+        data["context_block"] = "\n".join(context_parts) if context_parts else ""
 
     
 
         # Step 2: Generate comprehensive astrological consultation with AI-generated remedies
         combined_prompt = get_comprehensive_prompt(religion)
         
-        # PROGRAMMATIC REMEDY DETECTION - Check if user is requesting remedies
+        # SIMPLE REMEDY DETECTION - Check if user is requesting remedies
         remedy_should_be_provided = False
-        context_lower = data.get("context", "").lower()
         question_lower = data["question"].lower()
         
-        # Check if conversation contains: timeline/analysis + affirmative + religion
-        has_timeline = any(word in context_lower for word in ["persist", "improvement", "resolution", "challenge", "planetary"])
-        has_affirmative = any(word in question_lower for word in ["yes", "remedies", "remedy", "help", "suggest", "share"])
-        has_religion = any(word in question_lower.lower() for word in ["hindu", "muslim", "christian", "sikh", "jain", "buddhist", "secular"])
+        # Check if user explicitly asked for remedy
+        remedy_keywords = ["remedy", "remedies", "send remedy", "pls remedy", "please remedy", 
+                          "upay", "totke", "totka", "solution", "solutions", "help", 
+                          "solve", "fix", "what to do", "what should i do"]
         
-        # If previous message asked "Would you like remedies?" OR already said "here are remedies"
-        asked_for_remedies = ("would you like" in context_lower and "remedies" in context_lower) or ("here are remedies" in context_lower) or ("remedies aligned" in context_lower)
+        has_remedy_keyword = any(keyword in question_lower for keyword in remedy_keywords)
         
-        # AGGRESSIVE DETECTION: If user JUST typed a religion name (short question), treat as remedy request
-        religion_only_response = len(question_lower.strip().split()) <= 2 and has_religion
+        logging.warning(f"[WITH_CONTEXT] DEBUG KEYWORD: question_lower='{question_lower}', has_remedy_keyword={has_remedy_keyword}")
         
-        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)) or religion_only_response:
+        if has_remedy_keyword:
             remedy_should_be_provided = True
+        
+        logging.warning(f"[WITH_CONTEXT] DEBUG REMEDY FLAG: remedy_should_be_provided={remedy_should_be_provided}")
         
         # Inject mandatory system signal if remedy should be provided
         if remedy_should_be_provided:
-            system_override = f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\nUser has specified {religion.upper()} religion and wants remedies NOW.\nYou MUST populate the 'remedy' field with comprehensive {religion.upper()} remedies immediately.\nStructure: DOS (3-4 practices), DON'TS (2-3 things to avoid), CHARITY (2-3 specific donations).\nDo NOT write 'Based on your situation, here are remedies aligned with your faith' - GO DIRECTLY TO THE REMEDIES.\nDo NOT leave remedy field empty. Do NOT ask questions. PROVIDE FULL REMEDIES NOW.\n"
+            system_override = f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\nUser is asking for remedies. You are now in STAGE 3 (REMEDIES MODE).\nYou MUST:\n1. Set answer field to EMPTY STRING: \"\"\n2. Populate remedy field with comprehensive, practical remedies\n3. Do NOT use 'DOS:', 'DON'TS:', 'CHARITY:' labels - write naturally\n4. Include: specific practices with timings, mantras/prayers/surahs, fasting, charity guidance\n5. Tailor to their specific problem from conversation\n6. 100-150 words, practical and actionable\n7. If religion mentioned, align with that faith\nProvide FULL REMEDIES in remedy field NOW.\n"
             data["context_block"] = data["context_block"] + system_override if data["context_block"] else system_override
+            logging.warning(f"[WITH_CONTEXT] DEBUG: System override injected into context_block")
         
         human_msg = HumanMessage(content=combined_prompt.format(
             question=data["question"],
@@ -141,7 +149,12 @@ async def process_question_with_context(
             
             data["category"] = parsed_output.get("category", "General").title()
             data["answer"] = parsed_output.get("answer", "I sense important energies surrounding your question. Please allow me to provide deeper insight in a moment.")
-            data["remedy"] = parsed_output.get("remedy", "Take time for reflection and meditation. Trust in the cosmic timing of your journey.")
+            data["remedy"] = parsed_output.get("remedy", "")
+            
+            # FIX: If remedy was explicitly requested but is empty, generate default remedy
+            if remedy_should_be_provided and (not data["remedy"] or len(data["remedy"].strip()) < 10):
+                logging.warning("REMEDY EMPTY DETECTED: User requested remedy but AI returned empty. Generating default remedy...")
+                data["remedy"] = f"For spiritual wellbeing and peace of mind, practice daily meditation and recitation of sacred texts from your faith tradition. Engage in regular acts of charity and service to others. Maintain positive thoughts and actions aligned with your beliefs. These practices will bring clarity and inner strength during this period."
             
             # VALIDATION CHECK: If answer mentions remedies but remedy field is empty, this is an error
             answer_lower = data["answer"].lower()
@@ -199,6 +212,12 @@ Generate NOW. No more delays. No more empty fields."""
             except Exception:
                 pass
 
+        # FINAL CHECK: Ensure remedy is populated if it was requested
+        if remedy_should_be_provided and (not data.get("remedy") or len(str(data.get("remedy", "")).strip()) < 10):
+            logging.warning(f"[WITH_CONTEXT FINAL CHECK] Remedy still empty despite request. Generating strong fallback...")
+            data["remedy"] = "For spiritual wellbeing and peace of mind, practice daily meditation and recitation of sacred texts from your faith tradition. Engage in regular acts of charity and service to others. Maintain positive thoughts and actions aligned with your beliefs. These practices will bring clarity and inner strength during this period."
+            logging.warning(f"[WITH_CONTEXT FINAL CHECK] Applied fallback remedy with length {len(data['remedy'])}")
+
         return {
             "question": question,
             "category": data["category"],
@@ -218,6 +237,7 @@ async def process_question(
     religion: str = "hindu",
     session_id: Optional[str] = None,
     use_history: bool = False,
+    user_name: Optional[str] = None,
 ) -> dict:
     """
     Same as above but only question-based retrieval (no extra context)
@@ -254,36 +274,43 @@ async def process_question(
 
         data["retrieved_docs"] = retrieved_docs_question
         data["retrieved_text"] = pack_retrieved_text(data["retrieved_docs"])
-        data["context_block"] = f"Additional Context:\n{data['context']}" if data.get("context") else ""
+        
+        # Build context_block with user_name if provided
+        context_parts = []
+        if user_name:
+            context_parts.append(f"User Name: {user_name}")
+        if data.get("context"):
+            context_parts.append(f"Additional Context:\n{data['context']}")
+        data["context_block"] = "\n".join(context_parts) if context_parts else ""
 
     
 
         # Step 2: Generate comprehensive astrological consultation with AI-generated remedies
         combined_prompt = get_comprehensive_prompt(religion)
         
-        # PROGRAMMATIC REMEDY DETECTION - Check if user is requesting remedies
+        # SIMPLE REMEDY DETECTION - Check if user is requesting remedies
         remedy_should_be_provided = False
-        context_lower = data.get("context", "").lower()
         question_lower = data["question"].lower()
         
-        # Check if conversation contains: timeline/analysis + affirmative + religion
-        has_timeline = any(word in context_lower for word in ["persist", "improvement", "resolution", "challenge", "planetary"])
-        has_affirmative = any(word in question_lower for word in ["yes", "remedies", "remedy", "help", "suggest", "share"])
-        has_religion = any(word in question_lower.lower() for word in ["hindu", "muslim", "christian", "sikh", "jain", "buddhist", "secular"])
+        # Check if user explicitly asked for remedy
+        remedy_keywords = ["remedy", "remedies", "send remedy", "pls remedy", "please remedy", 
+                          "upay", "totke", "totka", "solution", "solutions", "help", 
+                          "solve", "fix", "what to do", "what should i do"]
         
-        # If previous message asked "Would you like remedies?" OR already said "here are remedies"
-        asked_for_remedies = ("would you like" in context_lower and "remedies" in context_lower) or ("here are remedies" in context_lower) or ("remedies aligned" in context_lower)
+        has_remedy_keyword = any(keyword in question_lower for keyword in remedy_keywords)
         
-        # AGGRESSIVE DETECTION: If user JUST typed a religion name (short question), treat as remedy request
-        religion_only_response = len(question_lower.strip().split()) <= 2 and has_religion
+        logging.warning(f"[NO_CONTEXT] DEBUG KEYWORD: question_lower='{question_lower}', has_remedy_keyword={has_remedy_keyword}")
         
-        if (has_timeline and (has_affirmative or has_religion)) or (asked_for_remedies and (has_affirmative or has_religion)) or religion_only_response:
+        if has_remedy_keyword:
             remedy_should_be_provided = True
+        
+        logging.warning(f"[NO_CONTEXT] DEBUG REMEDY FLAG: remedy_should_be_provided={remedy_should_be_provided}")
         
         # Inject mandatory system signal if remedy should be provided
         if remedy_should_be_provided:
-            system_override = f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\nUser has specified {religion.upper()} religion and wants remedies NOW.\nYou MUST populate the 'remedy' field with comprehensive {religion.upper()} remedies immediately.\nStructure: DOS (3-4 practices), DON'TS (2-3 things to avoid), CHARITY (2-3 specific donations).\nDo NOT write 'Based on your situation, here are remedies aligned with your faith' - GO DIRECTLY TO THE REMEDIES.\nDo NOT leave remedy field empty. Do NOT ask questions. PROVIDE FULL REMEDIES NOW.\n"
+            system_override = f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\nUser is asking for remedies. You are now in STAGE 3 (REMEDIES MODE).\nYou MUST:\n1. Set answer field to EMPTY STRING: \"\"\n2. Populate remedy field with comprehensive, practical remedies\n3. Do NOT use 'DOS:', 'DON'TS:', 'CHARITY:' labels - write naturally\n4. Include: specific practices with timings, mantras/prayers/surahs, fasting, charity guidance\n5. Tailor to their specific problem from conversation\n6. 100-150 words, practical and actionable\n7. If religion mentioned, align with that faith\nProvide FULL REMEDIES in remedy field NOW.\n"
             data["context_block"] = data["context_block"] + system_override if data["context_block"] else system_override
+            logging.warning(f"[NO_CONTEXT] DEBUG: System override injected into context_block")
       
         human_msg = HumanMessage(content=combined_prompt.format(
             question=data["question"],
@@ -322,7 +349,12 @@ async def process_question(
             
             data["category"] = parsed_output.get("category", "General").title()
             data["answer"] = parsed_output.get("answer", "I sense important energies surrounding your question. Please allow me to provide deeper insight in a moment.")
-            data["remedy"] = parsed_output.get("remedy", "Take time for reflection and meditation. Trust in the cosmic timing of your journey.")
+            data["remedy"] = parsed_output.get("remedy", "")
+            
+            # FIX: If remedy was explicitly requested but is empty, generate default remedy
+            if remedy_should_be_provided and (not data["remedy"] or len(data["remedy"].strip()) < 10):
+                logging.warning("REMEDY EMPTY DETECTED: User requested remedy but AI returned empty. Generating default remedy...")
+                data["remedy"] = f"For spiritual wellbeing and peace of mind, practice daily meditation and recitation of sacred texts from your faith tradition. Engage in regular acts of charity and service to others. Maintain positive thoughts and actions aligned with your beliefs. These practices will bring clarity and inner strength during this period."
             
             # VALIDATION CHECK: If answer mentions remedies but remedy field is empty, this is an error
             answer_lower = data["answer"].lower()
@@ -378,6 +410,12 @@ Generate NOW. No more delays. No more empty fields."""
                     save_session_context(session_id, context)
             except Exception:
                 pass
+
+        # FINAL CHECK: Ensure remedy is populated if it was requested
+        if remedy_should_be_provided and (not data.get("remedy") or len(str(data.get("remedy", "")).strip()) < 10):
+            logging.warning(f"[NO_CONTEXT FINAL CHECK] Remedy still empty despite request. Generating strong fallback...")
+            data["remedy"] = "For spiritual wellbeing and peace of mind, practice daily meditation and recitation of sacred texts from your faith tradition. Engage in regular acts of charity and service to others. Maintain positive thoughts and actions aligned with your beliefs. These practices will bring clarity and inner strength during this period."
+            logging.warning(f"[NO_CONTEXT FINAL CHECK] Applied fallback remedy with length {len(data['remedy'])}")
 
         return {
             "question": question,
