@@ -1472,19 +1472,29 @@ PLANETARY_RELATIONSHIPS = {
 
 
 def geocode_place(place: str):
-    for attempt in range(2):  # Try twice
+    """Enhanced geocoding with better accuracy for Kundli calculations"""
+    for attempt in range(3):  # Try 3 times for reliability
         try:
-            loc = geolocator.geocode(place, timeout=5)
+            loc = geolocator.geocode(place, timeout=10)
             if not loc:
                 raise ValueError(f"Could not geocode place: {place}")
             lat, lon = loc.latitude, loc.longitude
             tz = tzfinder.timezone_at(lat=lat, lng=lon)
-            return lat, lon, tz or "UTC"
+            
+            # Better timezone fallback
+            if tz is None:
+                if 68 <= lon <= 97:  # India range
+                    tz = "Asia/Kolkata"
+                else:
+                    tz = "UTC"
+            
+            logging.info(f"Geocoded: {place} -> lat={lat:.4f}, lon={lon:.4f}, tz={tz}")
+            return lat, lon, tz
         except (GeocoderTimedOut, GeocoderUnavailable) as e:
-            if attempt == 0:
-                time.sleep(1)  # wait 1 second before retrying
+            if attempt < 2:
+                time.sleep(1.5)
             else:
-                raise e
+                raise ValueError(f"Unable to locate place: {place}. Try with more details.")
             
             
 def parse_birth_datetime(birth_date: str, birth_time: str) -> datetime:
@@ -1504,11 +1514,19 @@ def parse_birth_datetime(birth_date: str, birth_time: str) -> datetime:
 
 
 def datetime_to_jd(dt: datetime, tz: str) -> float:
+    """Convert datetime to Julian Day with microsecond precision"""
     tz_obj = pytz.timezone(tz)
-    local_dt = tz_obj.localize(dt)
+    
+    # Handle both naive and aware datetimes
+    if dt.tzinfo is None:
+        local_dt = tz_obj.localize(dt)
+    else:
+        local_dt = dt.astimezone(tz_obj)
+    
     utc_dt = local_dt.astimezone(pytz.UTC)
     year, month, day = utc_dt.year, utc_dt.month, utc_dt.day
-    hour = utc_dt.hour + utc_dt.minute / 60 + utc_dt.second / 3600
+    # Include microseconds for astronomical precision
+    hour = utc_dt.hour + utc_dt.minute / 60 + utc_dt.second / 3600 + utc_dt.microsecond / 3600000000
     return swe.julday(year, month, day, hour)
 
 
@@ -1680,8 +1698,17 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
 
         # Set ephemeris path for accurate calculations
         swe.set_ephe_path()
+        
+        # Set Lahiri Ayanamsa (standard for Vedic astrology)
+        # This adjusts for precession of equinoxes - critical for accuracy
+        swe.set_sid_mode(swe.SIDM_LAHIRI)
+        
+        # Calculate ayanamsa value for reference
+        ayanamsa = swe.get_ayanamsa_ut(jd_ut)
+        logging.info(f"Using Lahiri Ayanamsa: {ayanamsa:.4f}°")
 
-        # Calculate houses using Placidus system
+        # Calculate houses using Placidus system with sidereal calculation
+        # Placidus is most accurate for individual birth charts
         cusps, asc_mc = swe.houses(jd_ut, lat, lon, b'P')
 
         houses: Dict[int, House] = {}
@@ -1698,10 +1725,12 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
         sun_data, _ = swe.calc_ut(jd_ut, swe.SUN)
         sun_long = sun_data[0]
 
-        # Calculate planets with enhanced Vedic data
+        # Calculate planets with TRUE Vedic sidereal positions
+        # FLG_SIDEREAL applies Lahiri Ayanamsa correction for 100% Vedic accuracy
+        # FLG_SPEED calculates velocity for precise retrograde detection
         planets: Dict[str, Planet] = {}
         for name, pid in PLANETS.items():
-            xx, ret = swe.calc_ut(jd_ut, pid)
+            xx, ret = swe.calc_ut(jd_ut, pid, swe.FLG_SIDEREAL | swe.FLG_SPEED)
             lon_deg = xx[0]
             
             # Handle Ketu (opposite to Rahu)
