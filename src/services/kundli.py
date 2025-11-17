@@ -1656,14 +1656,20 @@ def calculate_vimshottari_dasha(moon_longitude: float, birth_date: datetime) -> 
 
 
 def get_aspects(planets: Dict[str, Planet]) -> List[Aspect]:
-    """Calculate planetary aspects"""
+    """Calculate Vedic planetary aspects (Drishti/Graha Drishti)"""
     aspects = []
+    
+    # Vedic astrology aspects based on houses (not degrees like Western)
+    # All planets have 7th house aspect (opposition)
+    # Mars has 4th and 8th house aspects
+    # Jupiter has 5th and 9th house aspects  
+    # Saturn has 3rd and 10th house aspects
+    
     aspect_types = {
-        "Conjunction": 0,
-        "Sextile": 60,
-        "Square": 90,
-        "Trine": 120,
-        "Opposition": 180
+        "Yuti (Conjunction)": 0,  # Same house/sign
+        "Saptama Drishti (7th Aspect)": 180,  # Opposition - all planets have this
+        "Kendra Drishti (Square Aspect)": 90,  # Beneficial in Vedic
+        "Trikona Drishti (Trine Aspect)": 120  # Most beneficial
     }
     
     names = list(planets.keys())
@@ -1673,17 +1679,47 @@ def get_aspects(planets: Dict[str, Planet]) -> List[Aspect]:
             p1 = planets[names[i]]
             p2 = planets[names[j]]
             
-            diff = abs((p1.longitude - p2.longitude) % 360)
+            # Calculate house difference for Vedic aspects
+            house_diff = abs(p1.house - p2.house) if p1.house and p2.house else 0
+            degree_diff = abs((p1.longitude - p2.longitude) % 360)
             
-            for asp_name, asp_angle in aspect_types.items():
-                if abs(diff - asp_angle) <= 5:
-                    aspects.append(
-                        Aspect(
-                            between=[p1.name, p2.name],
-                            type=asp_name,
-                            angle=round(diff, 2)
-                        )
+            # Conjunction (same house or within 10° orb)
+            if house_diff == 0 or degree_diff <= 10:
+                aspects.append(
+                    Aspect(
+                        between=[p1.name, p2.name],
+                        type="Yuti (Conjunction)",
+                        angle=round(degree_diff, 2)
                     )
+                )
+            # 7th house aspect (opposition) - within 10° orb
+            elif abs(degree_diff - 180) <= 10:
+                aspects.append(
+                    Aspect(
+                        between=[p1.name, p2.name],
+                        type="Saptama Drishti (7th Aspect)",
+                        angle=round(degree_diff, 2)
+                    )
+                )
+            # Trine aspect (120°) - beneficial
+            elif abs(degree_diff - 120) <= 8:
+                aspects.append(
+                    Aspect(
+                        between=[p1.name, p2.name],
+                        type="Trikona Drishti (Trine)",
+                        angle=round(degree_diff, 2)
+                    )
+                )
+            # Square aspect (90°) - in Vedic this is Kendra (beneficial)
+            elif abs(degree_diff - 90) <= 8:
+                aspects.append(
+                    Aspect(
+                        between=[p1.name, p2.name],
+                        type="Kendra Drishti (Square)",
+                        angle=round(degree_diff, 2)
+                    )
+                )
+    
     return aspects
 
 
@@ -1707,10 +1743,12 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
         ayanamsa = swe.get_ayanamsa_ut(jd_ut)
         logging.info(f"Using Lahiri Ayanamsa: {ayanamsa:.4f}°")
 
-        # Calculate houses using Placidus system with sidereal calculation
-        # Placidus is most accurate for individual birth charts
-        cusps, asc_mc = swe.houses(jd_ut, lat, lon, b'P')
+        # Calculate houses using Whole Sign House system (standard in Vedic astrology)
+        # In Vedic, each house = one complete sign (30°)
+        # 'W' = Whole Sign House system
+        cusps, asc_mc = swe.houses(jd_ut, lat, lon, b'W')
 
+        # Vedic houses (Bhavas) - each house is exactly 30° (one complete sign)
         houses: Dict[int, House] = {}
         for i in range(12):
             cusp = cusps[i] % 360
