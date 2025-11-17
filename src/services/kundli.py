@@ -1397,8 +1397,8 @@ from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 from timezonefinderL import TimezoneFinder
 from geopy.geocoders import Nominatim
 import logging
-from typing import Dict
-from src.models.kundli_model import KundliChart, Planet, House, Aspect
+from typing import Dict, List, Tuple
+from src.models.kundli_model import KundliChart, Planet, House, Aspect, DashaPeriod
 
 
 # Init helpers
@@ -1413,16 +1413,29 @@ PLANETS = {
     'Mars': swe.MARS,
     'Jupiter': swe.JUPITER,
     'Saturn': swe.SATURN,
-    'Uranus': swe.URANUS,
-    'Neptune': swe.NEPTUNE,
-    'Pluto': swe.PLUTO,
-    'TrueNode': swe.TRUE_NODE,
+    'Rahu': swe.MEAN_NODE,
+    'Ketu': swe.MEAN_NODE,  # Ketu is opposite to Rahu
 }
 
 SIGNS = [
     'Aries','Taurus','Gemini','Cancer','Leo','Virgo',
     'Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'
 ]
+
+SIGN_LORDS = {
+    'Aries': 'Mars',
+    'Taurus': 'Venus', 
+    'Gemini': 'Mercury',
+    'Cancer': 'Moon',
+    'Leo': 'Sun',
+    'Virgo': 'Mercury',
+    'Libra': 'Venus',
+    'Scorpio': 'Mars',
+    'Sagittarius': 'Jupiter',
+    'Capricorn': 'Saturn',
+    'Aquarius': 'Saturn',
+    'Pisces': 'Jupiter'
+}
 
 NAKSHATRAS = [
     "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira",
@@ -1432,6 +1445,28 @@ NAKSHATRAS = [
     "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
     "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
 ]
+
+NAKSHATRA_LORDS = {
+    "Ashwini": "Ketu", "Bharani": "Venus", "Krittika": "Sun", 
+    "Rohini": "Moon", "Mrigashira": "Mars", "Ardra": "Rahu",
+    "Punarvasu": "Jupiter", "Pushya": "Saturn", "Ashlesha": "Mercury",
+    "Magha": "Ketu", "Purva Phalguni": "Venus", "Uttara Phalguni": "Sun",
+    "Hasta": "Moon", "Chitra": "Mars", "Swati": "Rahu",
+    "Vishakha": "Jupiter", "Anuradha": "Saturn", "Jyeshta": "Mercury",
+    "Moola": "Ketu", "Purva Ashadha": "Venus", "Uttara Ashadha": "Sun",
+    "Shravana": "Moon", "Dhanishta": "Mars", "Shatabhisha": "Rahu",
+    "Purva Bhadrapada": "Jupiter", "Uttara Bhadrapada": "Saturn", "Revati": "Mercury"
+}
+
+PLANETARY_RELATIONSHIPS = {
+    'Sun': {'friend': ['Moon', 'Mars', 'Jupiter'], 'enemy': ['Venus', 'Saturn'], 'neutral': ['Mercury']},
+    'Moon': {'friend': ['Sun', 'Mercury'], 'enemy': [], 'neutral': ['Mars', 'Venus', 'Jupiter', 'Saturn']},
+    'Mars': {'friend': ['Sun', 'Moon', 'Jupiter'], 'enemy': ['Mercury'], 'neutral': ['Venus', 'Saturn']},
+    'Mercury': {'friend': ['Sun', 'Venus'], 'enemy': ['Moon'], 'neutral': ['Mars', 'Jupiter', 'Saturn']},
+    'Jupiter': {'friend': ['Sun', 'Moon', 'Mars'], 'enemy': ['Mercury', 'Venus'], 'neutral': ['Saturn']},
+    'Venus': {'friend': ['Mercury', 'Saturn'], 'enemy': ['Sun', 'Moon'], 'neutral': ['Mars', 'Jupiter']},
+    'Saturn': {'friend': ['Mercury', 'Venus'], 'enemy': ['Sun', 'Moon', 'Mars'], 'neutral': ['Jupiter']}
+}
 
 
 
@@ -1477,7 +1512,7 @@ def datetime_to_jd(dt: datetime, tz: str) -> float:
     return swe.julday(year, month, day, hour)
 
 
-def get_nakshatra(longitude: float):
+def get_nakshatra(longitude: float) -> Tuple[str, int]:
     """Return Nakshatra + Pada from longitude"""
     total_degrees = longitude % 360
     nakshatra_index = int(total_degrees // (360 / 27))
@@ -1485,8 +1520,125 @@ def get_nakshatra(longitude: float):
     return NAKSHATRAS[nakshatra_index], pada
 
 
-def get_aspects(planets: Dict[str, Planet]):
-    """Basic aspects (Conjunction, Sextile, Square, Trine, Opposition)."""
+def get_planetary_avastha(planet_name: str, longitude: float, is_retrograde: bool) -> str:
+    """Determine planetary state based on position and motion"""
+    degree = longitude % 30
+    
+    if is_retrograde:
+        return "Vriddha"  # Old state for retrograde
+    
+    if degree <= 5:
+        return "Bala"  # Childhood
+    elif degree <= 10:
+        return "Kumara"  # Youth
+    elif degree <= 18:
+        return "Yuva"  # Young adult
+    elif degree <= 25:
+        return "Vriddha"  # Old
+    else:
+        return "Mrita"  # Dead
+
+
+def get_planetary_status(planet_name: str, sign_lord: str) -> str:
+    """Determine if planet is friendly, enemy or neutral in current sign"""
+    if planet_name not in PLANETARY_RELATIONSHIPS:
+        return "Neutral"
+    
+    relationships = PLANETARY_RELATIONSHIPS[planet_name]
+    
+    if sign_lord in relationships['friend']:
+        return "Friendly"
+    elif sign_lord in relationships['enemy']:
+        return "Enemy"
+    else:
+        return "Neutral"
+
+
+def is_combust(planet_name: str, planet_long: float, sun_long: float) -> bool:
+    """Check if planet is combust (too close to Sun)"""
+    if planet_name in ['Sun', 'Moon', 'Rahu', 'Ketu']:
+        return False
+    
+    distance = abs((planet_long - sun_long) % 360)
+    # Different planets have different combustion distances
+    combustion_limits = {
+        'Mercury': 14,
+        'Venus': 10,
+        'Mars': 17,
+        'Jupiter': 11,
+        'Saturn': 15
+    }
+    limit = combustion_limits.get(planet_name, 8)
+    return distance <= limit
+
+
+def find_house(lon_deg: float, cusps: List[float]) -> int:
+    """Fixed house mapping with proper boundary handling"""
+    lon_deg = lon_deg % 360
+    for i in range(12):
+        start = cusps[i] % 360
+        end = cusps[(i + 1) % 12] % 360
+
+        if start < end:
+            if start <= lon_deg < end:
+                return i + 1
+        else:
+            # wrap-around case
+            if lon_deg >= start or lon_deg < end:
+                return i + 1
+    return 12
+
+
+def deg_to_dms(deg: float) -> str:
+    """Convert degrees to degrees, minutes, seconds"""
+    degrees = int(deg)
+    minutes_decimal = (deg - degrees) * 60
+    minutes = int(minutes_decimal)
+    seconds = round((minutes_decimal - minutes) * 60)
+    
+    return f"{degrees}°{minutes}'{seconds}\""
+
+
+def calculate_vimshottari_dasha(moon_longitude: float, birth_date: datetime) -> List[DashaPeriod]:
+    """Calculate Vimshottari Dasha periods"""
+    # Find starting dasha based on Moon's nakshatra
+    nak_index = int((moon_longitude % 360) // (360 / 27))
+    
+    # Dasha order and years
+    dasha_order = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"]
+    dasha_years = [7, 20, 6, 10, 7, 18, 16, 19, 17]
+    
+    # Start from current nakshatra's lord
+    nak_lord = NAKSHATRA_LORDS[NAKSHATRAS[nak_index]]
+    
+    # Find starting point in dasha order
+    start_index = dasha_order.index(nak_lord)
+    
+    dashas = []
+    current_date = birth_date
+    
+    # Calculate major periods
+    for i in range(9):
+        planet_index = (start_index + i) % 9
+        planet = dasha_order[planet_index]
+        years = dasha_years[planet_index]
+        
+        end_date = current_date.replace(year=current_date.year + years)
+        
+        dashas.append(DashaPeriod(
+            planet=planet,
+            start_date=current_date.strftime("%d-%b-%Y"),
+            end_date=end_date.strftime("%d-%b-%Y"),
+            type='Mahadasha'
+        ))
+        
+        current_date = end_date
+    
+    return dashas
+
+
+def get_aspects(planets: Dict[str, Planet]) -> List[Aspect]:
+    """Calculate planetary aspects"""
     aspects = []
     aspect_types = {
         "Conjunction": 0,
@@ -1495,83 +1647,120 @@ def get_aspects(planets: Dict[str, Planet]):
         "Trine": 120,
         "Opposition": 180
     }
-    planet_names = list(planets.keys())
-    for i in range(len(planet_names)):
-        for j in range(i + 1, len(planet_names)):
-            p1 = planets[planet_names[i]]
-            p2 = planets[planet_names[j]]
-            diff = abs(p1.longitude - p2.longitude) % 360
-            for name, angle in aspect_types.items():
-                if abs(diff - angle) <= 5:  # orb of 5 degrees
-                    aspects.append(Aspect(
-                        between=[p1.name, p2.name],
-                        type=name,
-                        angle=diff
-                    ))
+    
+    names = list(planets.keys())
+    
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            p1 = planets[names[i]]
+            p2 = planets[names[j]]
+            
+            diff = abs((p1.longitude - p2.longitude) % 360)
+            
+            for asp_name, asp_angle in aspect_types.items():
+                if abs(diff - asp_angle) <= 5:
+                    aspects.append(
+                        Aspect(
+                            between=[p1.name, p2.name],
+                            type=asp_name,
+                            angle=round(diff, 2)
+                        )
+                    )
     return aspects
 
 
 # --------------------------
-# Core Computation
+# Core Computation - Enhanced Vedic Astrology
 # --------------------------
-def compute_kundli(birth_date: str, birth_time: str, place: str , gender : str) -> KundliChart:
-    try: 
+def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) -> KundliChart:
+    try:
         lat, lon, tz = geocode_place(place)
         dt = parse_birth_datetime(birth_date, birth_time)
         jd_ut = datetime_to_jd(dt, tz)
 
-        # houses
-        cusps, asc_mc = swe.houses(jd_ut, lat, lon)
+        # Set ephemeris path for accurate calculations
+        swe.set_ephe_path()
+
+        # Calculate houses using Placidus system
+        cusps, asc_mc = swe.houses(jd_ut, lat, lon, b'P')
+
         houses: Dict[int, House] = {}
-        for i, cusp in enumerate(cusps, start=1):
-            sign_idx = int(cusp // 30)
-            houses[i] = House(
-                number=i,
-                longitude=cusp,
-                sign=SIGNS[sign_idx],
-                degree=cusp % 30
+        for i in range(12):
+            cusp = cusps[i] % 360
+            houses[i+1] = House(
+                number=i+1,
+                longitude=round(cusp, 2),
+                sign=SIGNS[int(cusp // 30)],
+                degree=round(cusp % 30, 2)
             )
 
-        # planets
+        # Get Sun longitude for combustion calculation
+        sun_data, _ = swe.calc_ut(jd_ut, swe.SUN)
+        sun_long = sun_data[0]
+
+        # Calculate planets with enhanced Vedic data
         planets: Dict[str, Planet] = {}
         for name, pid in PLANETS.items():
             xx, ret = swe.calc_ut(jd_ut, pid)
-            lon_deg, latp, dist, speed = xx[:4]
-            sign_idx = int(lon_deg // 30)
+            lon_deg = xx[0]
+            
+            # Handle Ketu (opposite to Rahu)
+            if name == 'Ketu':
+                lon_deg = (xx[0] + 180) % 360
+            
+            sign_index = int(lon_deg // 30)
+            sign = SIGNS[sign_index]
             nakshatra, pada = get_nakshatra(lon_deg)
-            # map planet to house
-            planet_house = None
-            for i in range(1, 13):
-                start = houses[i].longitude
-                end = houses[1].longitude if i == 12 else houses[i + 1].longitude
-                if start <= lon_deg < end or (i == 12 and lon_deg >= start):
-                    planet_house = i
-                    break
+            
+            planet_house = find_house(lon_deg, cusps)
+            is_retro = xx[3] < 0
+            is_combust_planet = is_combust(name, lon_deg, sun_long)
+            avastha = get_planetary_avastha(name, lon_deg, is_retro)
+            status = get_planetary_status(name, SIGN_LORDS[sign])
+
             planets[name] = Planet(
                 name=name,
-                longitude=lon_deg,
-                sign=SIGNS[sign_idx],
-                degree=lon_deg % 30,
-                retrograde=speed < 0,
+                longitude=round(lon_deg, 2),
+                sign=sign,
+                sign_lord=SIGN_LORDS[sign],
+                degree=round(lon_deg % 30, 2),
+                retrograde=is_retro,
                 house=planet_house,
                 nakshatra=nakshatra,
-                pada=pada
+                nakshatra_lord=NAKSHATRA_LORDS[nakshatra],
+                pada=pada,
+                combust=is_combust_planet,
+                avastha=avastha,
+                status=status,
+                dms=deg_to_dms(lon_deg % 30)
             )
 
-        # aspects
+        # Calculate aspects
         aspects = get_aspects(planets)
+        
+        # Calculate Vimshottari Dasha
+        vimshottari_dasha = calculate_vimshottari_dasha(planets['Moon'].longitude, dt)
+
+        # Ascendant details
+        ascendant = cusps[0]
+        asc_sign = SIGNS[int(ascendant // 30)]
+        asc_nakshatra, asc_pada = get_nakshatra(ascendant)
 
         return KundliChart(
             place=place,
             timezone=tz,
             julian_day=jd_ut,
-            ascendant=asc_mc[0],
-            mc=asc_mc[1],
+            ascendant=round(ascendant, 2),
+            ascendant_sign=asc_sign,
+            ascendant_sign_lord=SIGN_LORDS[asc_sign],
+            ascendant_nakshatra=asc_nakshatra,
+            ascendant_nakshatra_lord=NAKSHATRA_LORDS[asc_nakshatra],
+            mc=round(asc_mc[1], 2),
             planets=planets,
             houses=houses,
-            aspects=aspects
+            aspects=aspects,
+            vimshottari_dasha=vimshottari_dasha
         )
-
 
     except Exception as e:
         logging.error(f"Error computing kundli: {e}")
