@@ -107,8 +107,8 @@ class KundliChart(BaseModel):
 
 class KundliResponse(BaseModel):
     name: str
-    birth_date: str  # Use YYYY-MM-DD + HH:MM or DD-MM-YYYY + HH:MM
-    birth_time: str
+    birth_date: str  # Use YYYY-MM-DD + HH:MM:SS or DD-MM-YYYY + HH:MM:SS (seconds optional)
+    birth_time: str  # Displays with seconds if provided
     place: str
     gender: str
     chart: KundliChart
@@ -116,6 +116,6 @@ class KundliResponse(BaseModel):
 class KundliRequest(BaseModel):
     name: str
     birth_date: str  # e.g. "1985-05-10"
-    birth_time: str  # e.g. "09:45"
+    birth_time: str  # e.g. "09:45:30" or "09:45" (seconds optional but recommended for accuracy)
     place: str       # e.g. "Bangalore, India"
     gender: str      # e.g. "Male"

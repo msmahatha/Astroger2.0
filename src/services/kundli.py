@@ -1498,19 +1498,28 @@ def geocode_place(place: str):
             
             
 def parse_birth_datetime(birth_date: str, birth_time: str) -> datetime:
+    """Parse birth date and time with support for seconds (HH:MM:SS or HH:MM)"""
     try:
         return datetime.fromisoformat(f"{birth_date}T{birth_time}")
     except Exception:
         pass
+    
     try:
         date_obj = datetime.strptime(birth_date, "%d-%m-%Y").date()
         if "T" in birth_time:
             birth_time = birth_time.split("T")[-1]
-        time_obj = datetime.strptime(birth_time, "%H:%M").time()
+        
+        # Try parsing with seconds first (HH:MM:SS)
+        try:
+            time_obj = datetime.strptime(birth_time, "%H:%M:%S").time()
+        except ValueError:
+            # Fallback to HH:MM if seconds not provided
+            time_obj = datetime.strptime(birth_time, "%H:%M").time()
+        
         return datetime.combine(date_obj, time_obj)
     except Exception:
         logging.error(f"Failed to parse date/time: {birth_date} {birth_time}")
-        raise ValueError("Invalid date/time format. Use YYYY-MM-DD + HH:MM or DD-MM-YYYY + HH:MM")
+        raise ValueError("Invalid date/time format. Use YYYY-MM-DD + HH:MM:SS or DD-MM-YYYY + HH:MM:SS")
 
 
 def datetime_to_jd(dt: datetime, tz: str) -> float:

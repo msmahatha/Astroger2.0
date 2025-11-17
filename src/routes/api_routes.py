@@ -106,7 +106,8 @@ async def generate_kundli(
     Input Parameters (all sent as form-data):
     - name (str): Full name of the individual.
     - birth_date (str): Date of birth in ISO format (YYYY-MM-DD). Example: "1990-01-01".
-    - birth_time (str): Time of birth in 24-hour format (HH:MM). Example: "14:30".
+    - birth_time (str): Time of birth in 24-hour format with seconds (HH:MM:SS) or without (HH:MM). 
+                       Examples: "14:30:45" or "14:30". Seconds recommended for maximum accuracy.
     - place (str): Place of birth (e.g., "Delhi", "Mumbai", or "Delhi, India").
     - gender (str): Gender identity (e.g., "Male", "Female", "Other").
     - x-api-key (header): API key for authorization.
@@ -130,7 +131,8 @@ async def generate_kundli(
 
     Notes:
     - Accepts both "YYYY-MM-DD" and "DD-MM-YYYY" formats for birth_date.
-    - Accepts "HH:MM" or "HH:MM:SS" for time.
+    - Accepts "HH:MM:SS" (with seconds) or "HH:MM" (without seconds) for time.
+    - Seconds in birth time provide microsecond precision for planetary positions.
     - Automatically retries geolocation if the request times out.
     - Ensure the place string is as accurate as possible for timezone and latitude/longitude lookup.
 
@@ -139,7 +141,7 @@ async def generate_kundli(
     {
     "name": "Vinay Kumar",
     "birth_date": "1985-05-10",
-    "birth_time": "09:45",
+    "birth_time": "09:45:30",
     "place": "Bangalore, India",
     "gender": "Male"
         }
