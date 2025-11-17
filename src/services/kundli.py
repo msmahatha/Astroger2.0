@@ -1540,10 +1540,25 @@ def datetime_to_jd(dt: datetime, tz: str) -> float:
 
 
 def get_nakshatra(longitude: float) -> Tuple[str, int]:
-    """Return Nakshatra + Pada from longitude"""
-    total_degrees = longitude % 360
-    nakshatra_index = int(total_degrees // (360 / 27))
-    pada = int((total_degrees % (360 / 27)) // (360 / 108)) + 1
+    """Return Nakshatra + Pada from longitude with precision validation"""
+    # Normalize to 0-360 with high precision
+    total_degrees = round(longitude % 360, 8)
+    
+    # Each nakshatra is 13.333333° (360/27)
+    nakshatra_span = 360.0 / 27.0
+    nakshatra_index = int(total_degrees / nakshatra_span)
+    
+    # Ensure index is within bounds (0-26)
+    nakshatra_index = max(0, min(26, nakshatra_index))
+    
+    # Each pada is 3.333333° (360/108)
+    pada_span = 360.0 / 108.0
+    position_in_nakshatra = total_degrees % nakshatra_span
+    pada = int(position_in_nakshatra / pada_span) + 1
+    
+    # Ensure pada is 1-4
+    pada = max(1, min(4, pada))
+    
     return NAKSHATRAS[nakshatra_index], pada
 
 
@@ -1600,30 +1615,55 @@ def is_combust(planet_name: str, planet_long: float, sun_long: float) -> bool:
 
 
 def find_house(lon_deg: float, cusps: List[float]) -> int:
-    """Fixed house mapping with proper boundary handling"""
-    lon_deg = lon_deg % 360
+    """Enhanced house mapping with precise boundary handling and validation"""
+    # Normalize longitude to 0-360 range with high precision
+    lon_deg = round(lon_deg % 360, 6)
+    
+    # Validate cusps
+    if len(cusps) != 12:
+        logging.error(f"Invalid cusps count: {len(cusps)}")
+        return 1
+    
+    # For Whole Sign Houses in Vedic astrology
+    # Each house is exactly 30° from ascendant sign
     for i in range(12):
-        start = cusps[i] % 360
-        end = cusps[(i + 1) % 12] % 360
+        start = round(cusps[i] % 360, 6)
+        end = round(cusps[(i + 1) % 12] % 360, 6)
 
         if start < end:
+            # Normal case: house doesn't cross 0°
             if start <= lon_deg < end:
                 return i + 1
         else:
-            # wrap-around case
+            # Wrap-around case: house crosses 0° (e.g., 350° to 10°)
             if lon_deg >= start or lon_deg < end:
                 return i + 1
+    
+    # Fallback: if no house found (should never happen), return 12th house
+    logging.warning(f"Planet at {lon_deg}° didn't match any house, defaulting to 12")
     return 12
 
 
 def deg_to_dms(deg: float) -> str:
-    """Convert degrees to degrees, minutes, seconds"""
+    """Convert degrees to degrees, minutes, seconds with precision"""
+    # Ensure positive value
+    deg = abs(deg)
+    
     degrees = int(deg)
     minutes_decimal = (deg - degrees) * 60
     minutes = int(minutes_decimal)
-    seconds = round((minutes_decimal - minutes) * 60)
+    seconds_decimal = (minutes_decimal - minutes) * 60
+    seconds = int(round(seconds_decimal))
     
-    return f"{degrees}°{minutes}'{seconds}\""
+    # Handle 60 seconds edge case
+    if seconds == 60:
+        seconds = 0
+        minutes += 1
+    if minutes == 60:
+        minutes = 0
+        degrees += 1
+    
+    return f"{degrees}°{minutes:02d}'{seconds:02d}\""
 
 
 def calculate_vimshottari_dasha(moon_longitude: float, birth_date: datetime) -> List[DashaPeriod]:
@@ -1758,18 +1798,30 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
         cusps, asc_mc = swe.houses(jd_ut, lat, lon, b'W')
 
         # Vedic houses (Bhavas) - each house is exactly 30° (one complete sign)
+        # Enhanced precision and validation
         houses: Dict[int, House] = {}
         for i in range(12):
             cusp = cusps[i] % 360
+            cusp_normalized = round(cusp, 4)  # Higher precision
+            
+            # Calculate sign index with proper bounds checking
+            sign_index = int(cusp_normalized // 30)
+            sign_index = max(0, min(11, sign_index))  # Ensure 0-11 range
+            
+            # Calculate degree within sign with high precision
+            degree_in_sign = round(cusp_normalized % 30, 4)
+            
             houses[i+1] = House(
                 number=i+1,
-                longitude=round(cusp, 2),
-                sign=SIGNS[int(cusp // 30)],
-                degree=round(cusp % 30, 2)
+                longitude=round(cusp_normalized, 2),
+                sign=SIGNS[sign_index],
+                degree=round(degree_in_sign, 2)
             )
+        
+        logging.info(f"Houses calculated: 1st house at {houses[1].longitude}° in {houses[1].sign}")
 
-        # Get Sun longitude for combustion calculation
-        sun_data, _ = swe.calc_ut(jd_ut, swe.SUN)
+        # Get Sun longitude for combustion calculation with sidereal flag
+        sun_data, _ = swe.calc_ut(jd_ut, swe.SUN, swe.FLG_SIDEREAL | swe.FLG_SPEED)
         sun_long = sun_data[0]
 
         # Calculate planets with TRUE Vedic sidereal positions
@@ -1780,18 +1832,37 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
             xx, ret = swe.calc_ut(jd_ut, pid, swe.FLG_SIDEREAL | swe.FLG_SPEED)
             lon_deg = xx[0]
             
-            # Handle Ketu (opposite to Rahu)
+            # Handle Ketu (opposite to Rahu) with precise calculation
             if name == 'Ketu':
-                lon_deg = (xx[0] + 180) % 360
+                lon_deg = (xx[0] + 180.0) % 360.0
             
+            # Normalize and validate longitude
+            lon_deg = round(lon_deg % 360, 6)
+            
+            # Calculate sign index with validation
             sign_index = int(lon_deg // 30)
+            sign_index = max(0, min(11, sign_index))  # Ensure 0-11 range
             sign = SIGNS[sign_index]
+            
+            # Calculate degree within sign with high precision
+            degree_in_sign = round(lon_deg % 30, 4)
+            
+            # Get nakshatra and pada
             nakshatra, pada = get_nakshatra(lon_deg)
             
+            # Find house with enhanced precision
             planet_house = find_house(lon_deg, cusps)
+            
+            # Retrograde detection
             is_retro = xx[3] < 0
+            
+            # Combustion check
             is_combust_planet = is_combust(name, lon_deg, sun_long)
+            
+            # Planetary state
             avastha = get_planetary_avastha(name, lon_deg, is_retro)
+            
+            # Relationship status
             status = get_planetary_status(name, SIGN_LORDS[sign])
 
             planets[name] = Planet(
@@ -1799,7 +1870,7 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
                 longitude=round(lon_deg, 2),
                 sign=sign,
                 sign_lord=SIGN_LORDS[sign],
-                degree=round(lon_deg % 30, 2),
+                degree=round(degree_in_sign, 2),  # Use precise degree calculation
                 retrograde=is_retro,
                 house=planet_house,
                 nakshatra=nakshatra,
@@ -1808,19 +1879,28 @@ def compute_kundli(birth_date: str, birth_time: str, place: str, gender: str) ->
                 combust=is_combust_planet,
                 avastha=avastha,
                 status=status,
-                dms=deg_to_dms(lon_deg % 30)
+                dms=deg_to_dms(degree_in_sign)  # Use precise degree for DMS
             )
+            
+            logging.info(f"{name}: {round(lon_deg, 2)}° in {sign} ({degree_in_sign:.2f}°), House {planet_house}, {nakshatra} Pada {pada}")
 
-        # Calculate aspects
+        # Calculate Vedic aspects with validated planets
         aspects = get_aspects(planets)
         
-        # Calculate Vimshottari Dasha
+        # Calculate Vimshottari Dasha with Moon's precise position
         vimshottari_dasha = calculate_vimshottari_dasha(planets['Moon'].longitude, dt)
 
-        # Ascendant details
-        ascendant = cusps[0]
-        asc_sign = SIGNS[int(ascendant // 30)]
-        asc_nakshatra, asc_pada = get_nakshatra(ascendant)
+        # Ascendant details with enhanced precision
+        ascendant = cusps[0] % 360
+        ascendant_normalized = round(ascendant, 4)
+        
+        # Calculate ascendant sign with validation
+        asc_sign_index = int(ascendant_normalized // 30)
+        asc_sign_index = max(0, min(11, asc_sign_index))
+        asc_sign = SIGNS[asc_sign_index]
+        
+        # Get ascendant nakshatra
+        asc_nakshatra, asc_pada = get_nakshatra(ascendant_normalized)
 
         return KundliChart(
             place=place,
