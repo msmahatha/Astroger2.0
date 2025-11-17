@@ -8,9 +8,64 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+env/
+ENV/
 
-# environments
+# Environment files - SENSITIVE
 .env
-.env/
+.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+*.env
+
+# Configuration files with secrets
+config.py
+config_local.py
+secrets.py
+credentials.json
+service-account.json
+
+# API Keys and Credentials
+*apikey*
+*api_key*
+*secret*
+*password*
+*credentials*
+*.pem
+*.key
+*.cert
+
+# Deployment documentation with sensitive info
+DEPLOYMENT.md
+RENDER_TROUBLESHOOTING.md
+deployment_notes.txt
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
 
 
