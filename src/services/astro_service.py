@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import httpx
 import re
 from typing import Optional, List, Dict, Any
 
@@ -8,6 +10,9 @@ from langchain.schema import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 
 # Custom Imports (Assumed to exist based on context)
+ASTROLOGY_API_USER_ID = os.getenv("ASTROLOGY_API_USER_ID")
+ASTROLOGY_API_KEY = os.getenv("ASTROLOGY_API_KEY")
+ASTROLOGY_API_BASE_URL = "https://json.astrologyapi.com/v1/"  # Example base URL
 from src.database.chroma_db import chromadb_retrieve
 from config import OPENAI_API_KEY, OPENAI_MODEL, EMBED_MODEL, TOP_K, TEMPERATURE, MAX_TOKENS
 from src.utils.helper import normalize_metadata, pack_retrieved_text, _unwrap_ai_message
@@ -53,6 +58,31 @@ output_parser = JsonOutputParser()
 
 
 # ---------------- Helper Functions ----------------
+
+async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> str:
+    """
+    Calls AstrologyAPI.com for remedy or answer. You can expand birth_details as needed.
+    """
+    # Example endpoint: /remedies
+    endpoint = f"{ASTROLOGY_API_BASE_URL}remedies"
+    payload = {"question": question}
+    if birth_details:
+        payload.update(birth_details)
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                endpoint,
+                json=payload,
+                auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY),
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            # You may need to adjust parsing based on actual API response
+            return data.get("remedy") or data.get("answer") or str(data)
+        except Exception as e:
+            logging.error(f"AstrologyAPI.com call failed: {e}")
+            return "Sorry, unable to fetch remedy from AstrologyAPI.com at this time."
 
 def _clean_json_string(text: str) -> str:
     """
@@ -157,12 +187,28 @@ async def _core_process(
     
     context_block = "\n".join(context_parts)
 
-    # 4. Remedy Detection Logic
+
+    # 4. Remedy Detection Logic & API/AI Switch
     question_lower = question.lower()
     needs_remedy = any(k in question_lower for k in REMEDY_KEYWORDS)
-    
-    logging.info(f"Processing Question: '{question[:50]}...' | Needs Remedy: {needs_remedy}")
+    wants_api = any(k in question_lower for k in ["astroapi", "astrologyapi", "official api", "use api", "external api"])
 
+    logging.info(f"Processing Question: '{question[:50]}...' | Needs Remedy: {needs_remedy} | Wants API: {wants_api}")
+
+    # If user explicitly asks for API, use AstrologyAPI.com
+    if wants_api:
+        # You can expand birth_details extraction as needed
+        birth_details = {}  # Fill from context if available
+        remedy_or_answer = await get_astrologyapi_remedy(question, birth_details)
+        return {
+            "question": question,
+            "category": "AstrologyAPI.com",
+            "answer": remedy_or_answer,
+            "remedy": remedy_or_answer,
+            "retrieved_sources": [],
+        }
+
+    # Otherwise, use AI logic as before
     if needs_remedy:
         system_override = (
             f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\n"
