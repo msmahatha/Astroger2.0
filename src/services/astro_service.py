@@ -195,34 +195,29 @@ async def _core_process(
 
     logging.info(f"Processing Question: '{question[:50]}...' | Needs Remedy: {needs_remedy} | Wants API: {wants_api}")
 
-    # If user explicitly asks for API, use AstrologyAPI.com
-    if wants_api:
-        # You can expand birth_details extraction as needed
-        birth_details = {}  # Fill from context if available
-        remedy_or_answer = await get_astrologyapi_remedy(question, birth_details)
-        return {
-            "question": question,
-            "category": "AstrologyAPI.com",
-            "answer": remedy_or_answer,
-            "remedy": remedy_or_answer,
-            "retrieved_sources": [],
-        }
+    # Always use AstrologyAPI.com for the main response
+    birth_details = {}  # You can expand this from context/user input
+    api_response = await get_astrologyapi_remedy(question, birth_details)
 
-    # Otherwise, use AI logic as before
-    if needs_remedy:
-        system_override = (
-            f"\n\n[CRITICAL SYSTEM OVERRIDE - IMMEDIATE ACTION REQUIRED]\n"
-            f"User is asking for remedies. You are now in STAGE 3 (REMEDIES MODE).\n"
-            f"You MUST:\n"
-            f"1. Set answer field to EMPTY STRING: \"\"\n"
-            f"2. Populate remedy field with comprehensive, practical remedies\n"
-            f"3. Do NOT use 'DOS:', 'DON'TS:', 'CHARITY:' labels - write naturally\n"
-            f"4. Include: specific practices, mantras/prayers, fasting, charity\n"
-            f"5. Tailor to their problem\n"
-            f"6. If religion mentioned ({religion}), align with that faith\n"
-            f"Provide FULL REMEDIES in remedy field NOW.\n"
-        )
-        context_block += system_override
+    # Now, use GPT to rephrase the API response in a human, conversational style
+    gpt_prompt = (
+        f"You are an expert astrologer. Rephrase the following astrology API response in a friendly, human, and conversational manner for the user.\n"
+        f"API Response: {api_response}\n"
+        f"User Name: {user_name if user_name else 'User'}\n"
+        f"Question: {question}\n"
+        f"If the API response is too technical or short, expand it with practical advice and empathy."
+    )
+    human_msg = HumanMessage(content=gpt_prompt)
+    gpt_response = await llm.agenerate([[human_msg]])
+    final_text = gpt_response.generations[0][0].text.strip()
+
+    return {
+        "question": question,
+        "category": "AstrologyAPI.com + GPT",
+        "answer": final_text,
+        "remedy": final_text,
+        "retrieved_sources": [],
+    }
 
     # 5. Generate Initial Response
     prompt_template = get_comprehensive_prompt(religion)
