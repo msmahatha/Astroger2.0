@@ -83,10 +83,8 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
     # Determine endpoint based on question intent
     kundali_keywords = ["kundali", "birth chart", "janam kundali", "natal chart"]
     if any(k in question.lower() for k in kundali_keywords):
-        endpoint = f"{ASTROLOGY_API_BASE_URL}kundali_basic"
-        # Build payload for kundali_basic endpoint
-        # Expect birth_details to contain: birthDate, birthTime, birthLatitude, birthLongitude
-        # Example: birthDate: '16 January 2002', birthTime: '19:44', birthLatitude: 22.5743545, birthLongitude: 88.3628734
+        endpoint = f"{ASTROLOGY_API_BASE_URL}birth_details"
+        # Build payload for birth_details endpoint
         try:
             date_parts = birth_details.get("birthDate", "").split()
             day = int(date_parts[0]) if len(date_parts) > 0 else 1
@@ -134,8 +132,8 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
             response.raise_for_status()
             data = response.json()
             # Parse kundali or remedy response
-            if "kundali_basic" in endpoint:
-                return data.get("kundali") or str(data)
+            if "birth_details" in endpoint:
+                return data or str(data)
             return data.get("remedy") or data.get("answer") or str(data)
         except Exception as e:
             logging.error(f"AstrologyAPI.com call failed: {e}")
