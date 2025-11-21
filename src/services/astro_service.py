@@ -2,6 +2,23 @@ import asyncio
 import logging
 import os
 import httpx
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+def test_kundali_api():
+    # Example birth details for testing
+    birth_details = {
+        "birthDate": "16 January 2002",
+        "birthTime": "19:44",
+        "birthLatitude": 22.5743545,
+        "birthLongitude": 88.3628734
+    }
+    question = "Show my kundali"
+    import asyncio
+    result = asyncio.run(get_astrologyapi_remedy(question, birth_details))
+    print("API Response:", result)
+
+if __name__ == "__main__":
+    test_kundali_api()
 import re
 from typing import Optional, List, Dict, Any
 
@@ -67,14 +84,43 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
     kundali_keywords = ["kundali", "birth chart", "janam kundali", "natal chart"]
     if any(k in question.lower() for k in kundali_keywords):
         endpoint = f"{ASTROLOGY_API_BASE_URL}kundali_basic"
+        # Build payload for kundali_basic endpoint
+        # Expect birth_details to contain: birthDate, birthTime, birthLatitude, birthLongitude
+        # Example: birthDate: '16 January 2002', birthTime: '19:44', birthLatitude: 22.5743545, birthLongitude: 88.3628734
+        try:
+            date_parts = birth_details.get("birthDate", "").split()
+            day = int(date_parts[0]) if len(date_parts) > 0 else 1
+            month = 1
+            year = 2000
+            if len(date_parts) == 3:
+                month_str = date_parts[1].lower()
+                month_map = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
+                month = month_map.get(month_str, 1)
+                year = int(date_parts[2])
+            time_parts = birth_details.get("birthTime", "").split(":")
+            hour = int(time_parts[0]) if len(time_parts) > 0 else 0
+            minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+            lat = float(birth_details.get("birthLatitude", 0))
+            lon = float(birth_details.get("birthLongitude", 0))
+            tzone = 5.5  # Default to IST; ideally calculate from place
+            payload = {
+                "day": day,
+                "month": month,
+                "year": year,
+                "hour": hour,
+                "min": minute,
+                "lat": lat,
+                "lon": lon,
+                "tzone": tzone
+            }
+        except Exception as e:
+            logging.error(f"Failed to parse birth details for kundali: {e}")
+            payload = {}
     else:
         endpoint = f"{ASTROLOGY_API_BASE_URL}remedies"
-
-    # Prepare payload for kundali or remedy
-    payload = {}
-    if birth_details:
-        payload.update(birth_details)
-    if "remedies" in endpoint:
+        payload = {}
+        if birth_details:
+            payload.update(birth_details)
         payload["question"] = question
 
     async with httpx.AsyncClient() as client:
