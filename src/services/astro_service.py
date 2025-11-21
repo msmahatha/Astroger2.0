@@ -63,11 +63,20 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
     """
     Calls AstrologyAPI.com for remedy or answer. You can expand birth_details as needed.
     """
-    # Example endpoint: /remedies
-    endpoint = f"{ASTROLOGY_API_BASE_URL}remedies"
-    payload = {"question": question}
+    # Determine endpoint based on question intent
+    kundali_keywords = ["kundali", "birth chart", "janam kundali", "natal chart"]
+    if any(k in question.lower() for k in kundali_keywords):
+        endpoint = f"{ASTROLOGY_API_BASE_URL}kundali_basic"
+    else:
+        endpoint = f"{ASTROLOGY_API_BASE_URL}remedies"
+
+    # Prepare payload for kundali or remedy
+    payload = {}
     if birth_details:
         payload.update(birth_details)
+    if "remedies" in endpoint:
+        payload["question"] = question
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
@@ -78,11 +87,13 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
             )
             response.raise_for_status()
             data = response.json()
-            # You may need to adjust parsing based on actual API response
+            # Parse kundali or remedy response
+            if "kundali_basic" in endpoint:
+                return data.get("kundali") or str(data)
             return data.get("remedy") or data.get("answer") or str(data)
         except Exception as e:
             logging.error(f"AstrologyAPI.com call failed: {e}")
-            return "Sorry, unable to fetch remedy from AstrologyAPI.com at this time."
+            return "Sorry, unable to fetch details from AstrologyAPI.com at this time."
 
 def _clean_json_string(text: str) -> str:
     """
@@ -196,28 +207,79 @@ async def _core_process(
     logging.info(f"Processing Question: '{question[:50]}...' | Needs Remedy: {needs_remedy} | Wants API: {wants_api}")
 
     # Always use AstrologyAPI.com for the main response
-    birth_details = {}  # You can expand this from context/user input
-    api_response = await get_astrologyapi_remedy(question, birth_details)
+    # Extract birth details from context/user input if available
+    birth_details = {}
+    if context and isinstance(context, dict):
+        # Expecting context to be a dict with birth details
+        birth_fields = ["birthDate", "birthTime", "birthPlace", "birthLatitude", "birthLongitude"]
+        for field in birth_fields:
+            if field in context:
+                birth_details[field] = context[field]
 
-    # Now, use GPT to rephrase the API response in a human, conversational style
-    gpt_prompt = (
-        f"You are an expert astrologer. Rephrase the following astrology API response in a friendly, human, and conversational manner for the user.\n"
-        f"API Response: {api_response}\n"
-        f"User Name: {user_name if user_name else 'User'}\n"
-        f"Question: {question}\n"
-        f"If the API response is too technical or short, expand it with practical advice and empathy."
-    )
-    human_msg = HumanMessage(content=gpt_prompt)
-    gpt_response = await llm.agenerate([[human_msg]])
-    final_text = gpt_response.generations[0][0].text.strip()
+    astrology_keywords = [
+        "kundali", "birth chart", "janam kundali", "natal chart", "remedy", "astrology", "planet", "dasha", "lagna", "horoscope", "zodiac", "graha", "nakshatra", "rashi", "upay", "totka", "totke"
+    ]
+    is_astrology_question = any(k in question.lower() for k in astrology_keywords)
 
-    return {
-        "question": question,
-        "category": "AstrologyAPI.com + GPT",
-        "answer": final_text,
-        "remedy": final_text,
-        "retrieved_sources": [],
+    # Greeting logic (only at the beginning, personalized by religion)
+    greeting_map = {
+        "hindu": "Namaste!",
+        "muslim": "Assalamu Alaikum!",
+        "christian": "Greetings!",
+        "sikh": "Sat Sri Akal!",
+        "buddhist": "Namo Buddhaya!",
+        "jain": "Jai Jinendra!",
+        "other": "Hello!"
     }
+    greeting = greeting_map.get(religion.lower(), "Hello!")
+
+    # Only send to AstrologyAPI.com for astrology questions
+    if is_astrology_question:
+        api_response = await get_astrologyapi_remedy(question, birth_details)
+        gpt_prompt = (
+            f"You are an expert astrologer. Rephrase the following astrology API response in a friendly, human, and conversational manner for the user.\n"
+            f"API Response: {api_response}\n"
+            f"User Name: {user_name if user_name else 'User'}\n"
+            f"Question: {question}\n"
+            f"If the API response is too technical or short, expand it with practical advice and empathy."
+        )
+        human_msg = HumanMessage(content=gpt_prompt)
+        gpt_response = await llm.agenerate([[human_msg]])
+        final_text = gpt_response.generations[0][0].text.strip()
+
+        # Add greeting only if this is the first message (can be controlled by a flag or context)
+        if context and isinstance(context, dict) and context.get("hasShownIntro") is False:
+            final_text = f"{greeting} {user_name if user_name else ''}\n\n" + final_text
+
+        return {
+            "question": question,
+            "category": "AstrologyAPI.com + GPT",
+            "answer": final_text,
+            "remedy": final_text,
+            "retrieved_sources": [],
+        }
+    else:
+        # For non-astrology questions, use LLM only
+        llm_prompt = (
+            f"You are a helpful assistant. Answer the following question in a friendly, human, and conversational manner.\n"
+            f"User Name: {user_name if user_name else 'User'}\n"
+            f"Question: {question}\n"
+        )
+        human_msg = HumanMessage(content=llm_prompt)
+        llm_response = await llm.agenerate([[human_msg]])
+        final_text = llm_response.generations[0][0].text.strip()
+
+        # Add greeting only if this is the first message
+        if context and isinstance(context, dict) and context.get("hasShownIntro") is False:
+            final_text = f"{greeting} {user_name if user_name else ''}\n\n" + final_text
+
+        return {
+            "question": question,
+            "category": "LLM Only",
+            "answer": final_text,
+            "remedy": "",
+            "retrieved_sources": [],
+        }
 
     # 5. Generate Initial Response
     prompt_template = get_comprehensive_prompt(religion)
