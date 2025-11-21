@@ -205,7 +205,7 @@ Generate NOW. No more delays. No more empty fields."""
         # Save chat turn to session store if session_id provided
         if session_id:
             try:
-                append_chat_turn(session_id, question, data.get("answer") or _unwrap_ai_message(combined_text))
+                force_prompt = f"""[CRITICAL SYSTEM OVERRIDE]
                 # If user provided explicit context, persist it for future turns
                 if context:
                     save_session_context(session_id, context)
@@ -321,7 +321,6 @@ Generate NOW. No more delays. No more empty fields."""
             if remedy_empty and mentions_remedies:
                 logging.warning("REMEDY LOOP DETECTED: Answer mentions remedies but remedy field is empty. Forcing remedy generation...")
                 # Retry with explicit force
-                force_prompt = f"""[CRITICAL SYSTEM OVERRIDE]
 The user wants {religion.upper()} remedies NOW. You said "here are remedies" but provided NOTHING in the remedy field.
 
 You MUST generate comprehensive remedies following this structure:
