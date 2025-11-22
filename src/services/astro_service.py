@@ -87,20 +87,37 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
     
     # Parse birth details
     try:
-        date_parts = birth_details.get("birthDate", "").split()
-        day = int(date_parts[0]) if len(date_parts) > 0 else 1
+        if not birth_details:
+            return "Please provide your complete birth details (date, time, and place) to generate your kundali."
+        
+        date_parts = birth_details.get("birthDate", "").strip().split()
+        if not date_parts or len(date_parts) < 3:
+            return "Please provide your complete birth date in format: DD Month YYYY (e.g., 02 February 1996)"
+        
+        day = int(date_parts[0]) if date_parts[0] else 1
         month = 1
         year = 2000
+        
         if len(date_parts) == 3:
             month_str = date_parts[1].lower()
             month_map = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
             month = month_map.get(month_str, 1)
-            year = int(date_parts[2])
-        time_parts = birth_details.get("birthTime", "").split(":")
-        hour = int(time_parts[0]) if len(time_parts) > 0 else 0
-        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+            year = int(date_parts[2]) if date_parts[2] else 2000
+        
+        time_str = birth_details.get("birthTime", "").strip()
+        if not time_str or ":" not in time_str:
+            return "Please provide your birth time in format: HH:MM (e.g., 01:19)"
+        
+        time_parts = time_str.split(":")
+        hour = int(time_parts[0]) if time_parts[0] else 0
+        minute = int(time_parts[1]) if len(time_parts) > 1 and time_parts[1] else 0
+        
         lat = float(birth_details.get("birthLatitude", 0))
         lon = float(birth_details.get("birthLongitude", 0))
+        
+        if lat == 0 and lon == 0:
+            return "Please provide your birth place with valid coordinates."
+        
         place = birth_details.get("birthPlace", "Unknown")
         tzone = 5.5  # Default to IST
         
@@ -114,9 +131,9 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
             "lon": lon,
             "tzone": tzone
         }
-    except Exception as e:
+    except (ValueError, AttributeError, KeyError) as e:
         logging.error(f"Failed to parse birth details: {e}")
-        return "Unable to parse birth details. Please provide complete information."
+        return "Unable to parse birth details. Please ensure you've provided complete information: birth date (DD Month YYYY), time (HH:MM), and place."
     
     async with httpx.AsyncClient() as client:
         try:
