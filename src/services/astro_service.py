@@ -304,6 +304,7 @@ async def _core_process(
     """
     # 1. Setup Context & Session
     final_context = context or ""
+    context_block = ""  # Initialize early to avoid NameError
     
     if session_id:
         session_ctx = get_session_context(session_id)
@@ -328,7 +329,7 @@ async def _core_process(
     if final_context:
         context_parts.append(f"Additional Context:\n{final_context}")
     
-    context_block = "\n".join(context_parts)
+    context_block = "\n".join(context_parts) if context_parts else ""
 
 
 
@@ -400,7 +401,8 @@ async def _core_process(
         enhanced_retrieved_block = "No specific knowledge retrieved. Use your expertise."
 
     # 7. Generate Response using Comprehensive Prompt
-    prompt_template = get_comprehensive_prompt(religion)
+    user_language = user_info.get("language") if user_info else None
+    prompt_template = get_comprehensive_prompt(religion, user_language)
     human_msg = HumanMessage(content=prompt_template.format(
         question=question,
         retrieved_block=f"Retrieved Astrological Knowledge:\n{enhanced_retrieved_block}",
