@@ -393,7 +393,7 @@ BE NATURAL AND SUPPORTIVE:
 • If no specific problem → General wellbeing remedies
 
 REMEDY FRAMEWORK:
-""" + remedy_guide + """
+""" + remedy_guide + f"""
 
 REMEDY WRITING STYLE:
 • Write like you're talking to a friend - warm, clear, conversational
@@ -518,11 +518,11 @@ OUTPUT FORMAT:
 }}}}
 
 CRITICAL CHECKS:
-✓ Starts with {{ (no text before)
+✓ Starts with {{{{ (no text before)
 ✓ Valid JSON
 ✓ Stage 1-2: answer filled, remedy empty
 ✓ Stage 3: answer empty, remedy filled
-✓ No whitespace before {{
+✓ No whitespace before {{{{
 
 ═══════════════════════════════════════════════════════════
 COMMON ERROR & FIX
