@@ -329,9 +329,24 @@ async def _core_process(
 
     # 5. Get AstrologyAPI.com Response (if astrology question) as enrichment
     api_enrichment = ""
+    kundali_keywords = ["kundali", "kundli", "birth chart", "janam kundali", "natal chart", "horoscope chart"]
+    is_kundali_request = any(k in question.lower() for k in kundali_keywords)
+    
     if is_astrology_question:
         try:
             api_response = await get_astrologyapi_remedy(question, birth_details)
+            
+            # For kundali requests, return the formatted data directly
+            if is_kundali_request and api_response and len(api_response) > 200:
+                logging.info("Returning kundali data directly")
+                return {
+                    "question": question,
+                    "category": "Kundali",
+                    "answer": api_response,
+                    "remedy": "",
+                    "retrieved_sources": [normalize_metadata(d.get("metadata")) for d in retrieved_docs],
+                }
+            
             api_enrichment = f"\n\nAstrologyAPI.com Data:\n{api_response}"
             logging.info("Successfully retrieved AstrologyAPI.com data")
         except Exception as e:
