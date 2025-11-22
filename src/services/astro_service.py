@@ -243,93 +243,52 @@ async def _core_process(
     context_block = "\n".join(context_parts)
 
 
-    # 4. Remedy Detection Logic & API/AI Switch
+
+    # 4. Detect Question Type & Extract Birth Details
     question_lower = question.lower()
     needs_remedy = any(k in question_lower for k in REMEDY_KEYWORDS)
-    wants_api = any(k in question_lower for k in ["astroapi", "astrologyapi", "official api", "use api", "external api"])
+    
+    astrology_keywords = [
+        "kundali", "birth chart", "janam kundali", "natal chart", "remedy", "astrology", 
+        "planet", "dasha", "lagna", "horoscope", "zodiac", "graha", "nakshatra", "rashi", 
+        "upay", "totka", "totke"
+    ]
+    is_astrology_question = any(k in question.lower() for k in astrology_keywords)
 
-    logging.info(f"Processing Question: '{question[:50]}...' | Needs Remedy: {needs_remedy} | Wants API: {wants_api}")
+    logging.info(f"Processing Question: '{question[:50]}...' | Astrology: {is_astrology_question} | Needs Remedy: {needs_remedy}")
 
-    # Always use AstrologyAPI.com for the main response
-    # Extract birth details from context/user input if available
+    # Extract birth details from context if available
     birth_details = {}
     if context and isinstance(context, dict):
-        # Expecting context to be a dict with birth details
         birth_fields = ["birthDate", "birthTime", "birthPlace", "birthLatitude", "birthLongitude"]
         for field in birth_fields:
             if field in context:
                 birth_details[field] = context[field]
 
-    astrology_keywords = [
-        "kundali", "birth chart", "janam kundali", "natal chart", "remedy", "astrology", "planet", "dasha", "lagna", "horoscope", "zodiac", "graha", "nakshatra", "rashi", "upay", "totka", "totke"
-    ]
-    is_astrology_question = any(k in question.lower() for k in astrology_keywords)
-
-    # Greeting logic (only at the beginning, personalized by religion)
-    greeting_map = {
-        "hindu": "Namaste!",
-        "muslim": "Assalamu Alaikum!",
-        "christian": "Greetings!",
-        "sikh": "Sat Sri Akal!",
-        "buddhist": "Namo Buddhaya!",
-        "jain": "Jai Jinendra!",
-        "other": "Hello!"
-    }
-    greeting = greeting_map.get(religion.lower(), "Hello!")
-
-    # Only send to AstrologyAPI.com for astrology questions
+    # 5. Get AstrologyAPI.com Response (if astrology question) as enrichment
+    api_enrichment = ""
     if is_astrology_question:
-        api_response = await get_astrologyapi_remedy(question, birth_details)
-        gpt_prompt = (
-            f"You are an expert astrologer. Rephrase the following astrology API response in a friendly, human, and conversational manner for the user.\n"
-            f"API Response: {api_response}\n"
-            f"User Name: {user_name if user_name else 'User'}\n"
-            f"Question: {question}\n"
-            f"If the API response is too technical or short, expand it with practical advice and empathy."
-        )
-        human_msg = HumanMessage(content=gpt_prompt)
-        gpt_response = await llm.agenerate([[human_msg]])
-        final_text = gpt_response.generations[0][0].text.strip()
+        try:
+            api_response = await get_astrologyapi_remedy(question, birth_details)
+            api_enrichment = f"\n\nAstrologyAPI.com Data:\n{api_response}"
+            logging.info("Successfully retrieved AstrologyAPI.com data")
+        except Exception as e:
+            logging.warning(f"AstrologyAPI.com call failed, continuing with ChromaDB only: {e}")
+            api_enrichment = ""
 
-        # Add greeting only if this is the first message (can be controlled by a flag or context)
-        if context and isinstance(context, dict) and context.get("hasShownIntro") is False:
-            final_text = f"{greeting} {user_name if user_name else ''}\n\n" + final_text
+    # 6. Build Enhanced Retrieved Block (ChromaDB + AstrologyAPI.com)
+    enhanced_retrieved_block = retrieved_text
+    if api_enrichment:
+        enhanced_retrieved_block = f"{retrieved_text}\n{api_enrichment}" if retrieved_text else api_enrichment
+    
+    if not enhanced_retrieved_block:
+        enhanced_retrieved_block = "No specific knowledge retrieved. Use your expertise."
 
-        return {
-            "question": question,
-            "category": "AstrologyAPI.com + GPT",
-            "answer": final_text,
-            "remedy": final_text,
-            "retrieved_sources": [],
-        }
-    else:
-        # For non-astrology questions, use LLM only
-        llm_prompt = (
-            f"You are a helpful assistant. Answer the following question in a friendly, human, and conversational manner.\n"
-            f"User Name: {user_name if user_name else 'User'}\n"
-            f"Question: {question}\n"
-        )
-        human_msg = HumanMessage(content=llm_prompt)
-        llm_response = await llm.agenerate([[human_msg]])
-        final_text = llm_response.generations[0][0].text.strip()
-
-        # Add greeting only if this is the first message
-        if context and isinstance(context, dict) and context.get("hasShownIntro") is False:
-            final_text = f"{greeting} {user_name if user_name else ''}\n\n" + final_text
-
-        return {
-            "question": question,
-            "category": "LLM Only",
-            "answer": final_text,
-            "remedy": "",
-            "retrieved_sources": [],
-        }
-
-    # 5. Generate Initial Response
+    # 7. Generate Response using Comprehensive Prompt
     prompt_template = get_comprehensive_prompt(religion)
     human_msg = HumanMessage(content=prompt_template.format(
         question=question,
-        retrieved_block=f"Retrieved Astrological Knowledge:\n{retrieved_text}" if retrieved_text else "No specific knowledge retrieved. Use your expertise.",
+        retrieved_block=f"Retrieved Astrological Knowledge:\n{enhanced_retrieved_block}",
         context_block=context_block if context_block else "No additional context provided."
     ))
 
@@ -390,6 +349,7 @@ Generate NOW. No more delays. No more empty fields."""
         data["answer"] = ""
 
     data["answer"] = validate_and_fix_persona(data["answer"])
+    data["remedy"] = validate_and_fix_persona(data["remedy"])
 
     # 9. Save Session
     if session_id:
