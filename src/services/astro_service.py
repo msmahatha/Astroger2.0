@@ -78,66 +78,128 @@ output_parser = JsonOutputParser()
 
 async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> str:
     """
-    Calls AstrologyAPI.com for remedy or answer. You can expand birth_details as needed.
+    Calls AstrologyAPI.com for comprehensive kundali or remedy.
+    For kundali requests, fetches multiple endpoints and formats beautifully.
     """
-    # Determine endpoint based on question intent
-    kundali_keywords = ["kundali", "birth chart", "janam kundali", "natal chart"]
-    if any(k in question.lower() for k in kundali_keywords):
-        endpoint = f"{ASTROLOGY_API_BASE_URL}birth_details"
-        # Build payload for birth_details endpoint
-        try:
-            date_parts = birth_details.get("birthDate", "").split()
-            day = int(date_parts[0]) if len(date_parts) > 0 else 1
-            month = 1
-            year = 2000
-            if len(date_parts) == 3:
-                month_str = date_parts[1].lower()
-                month_map = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
-                month = month_map.get(month_str, 1)
-                year = int(date_parts[2])
-            time_parts = birth_details.get("birthTime", "").split(":")
-            hour = int(time_parts[0]) if len(time_parts) > 0 else 0
-            minute = int(time_parts[1]) if len(time_parts) > 1 else 0
-            lat = float(birth_details.get("birthLatitude", 0))
-            lon = float(birth_details.get("birthLongitude", 0))
-            tzone = 5.5  # Default to IST; ideally calculate from place
-            payload = {
-                "day": day,
-                "month": month,
-                "year": year,
-                "hour": hour,
-                "min": minute,
-                "lat": lat,
-                "lon": lon,
-                "tzone": tzone
-            }
-        except Exception as e:
-            logging.error(f"Failed to parse birth details for kundali: {e}")
-            payload = {}
-    else:
-        endpoint = f"{ASTROLOGY_API_BASE_URL}remedies"
-        payload = {}
-        if birth_details:
-            payload.update(birth_details)
-        payload["question"] = question
-
+    # Determine if this is a kundali request
+    kundali_keywords = ["kundali", "birth chart", "janam kundali", "natal chart", "kundli", "horoscope chart"]
+    is_kundali_request = any(k in question.lower() for k in kundali_keywords)
+    
+    # Parse birth details
+    try:
+        date_parts = birth_details.get("birthDate", "").split()
+        day = int(date_parts[0]) if len(date_parts) > 0 else 1
+        month = 1
+        year = 2000
+        if len(date_parts) == 3:
+            month_str = date_parts[1].lower()
+            month_map = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
+            month = month_map.get(month_str, 1)
+            year = int(date_parts[2])
+        time_parts = birth_details.get("birthTime", "").split(":")
+        hour = int(time_parts[0]) if len(time_parts) > 0 else 0
+        minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+        lat = float(birth_details.get("birthLatitude", 0))
+        lon = float(birth_details.get("birthLongitude", 0))
+        place = birth_details.get("birthPlace", "Unknown")
+        tzone = 5.5  # Default to IST
+        
+        payload = {
+            "day": day,
+            "month": month,
+            "year": year,
+            "hour": hour,
+            "min": minute,
+            "lat": lat,
+            "lon": lon,
+            "tzone": tzone
+        }
+    except Exception as e:
+        logging.error(f"Failed to parse birth details: {e}")
+        return "Unable to parse birth details. Please provide complete information."
+    
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(
-                endpoint,
-                json=payload,
-                auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY),
-                timeout=10.0
-            )
-            response.raise_for_status()
-            data = response.json()
-            # Parse kundali or remedy response
-            if "birth_details" in endpoint:
-                return data or str(data)
-            return data.get("remedy") or data.get("answer") or str(data)
+            if is_kundali_request:
+                # Fetch comprehensive kundali data from multiple endpoints
+                kundali_parts = []
+                
+                # 1. Birth Details
+                try:
+                    resp = await client.post(f"{ASTROLOGY_API_BASE_URL}birth_details", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
+                    birth_data = resp.json()
+                    kundali_parts.append(f"📋 BIRTH DETAILS\n")
+                    kundali_parts.append(f"Date: {day:02d}/{month:02d}/{year}\n")
+                    kundali_parts.append(f"Time: {hour:02d}:{minute:02d}\n")
+                    kundali_parts.append(f"Place: {place}\n")
+                    kundali_parts.append(f"Ayanamsha: {birth_data.get('ayanamsha', 0):.2f}°\n")
+                    kundali_parts.append(f"Sunrise: {birth_data.get('sunrise', 'N/A')}\n")
+                    kundali_parts.append(f"Sunset: {birth_data.get('sunset', 'N/A')}\n\n")
+                except:
+                    pass
+                
+                # 2. Planetary Positions
+                try:
+                    resp = await client.post(f"{ASTROLOGY_API_BASE_URL}planets", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
+                    planets_data = resp.json()
+                    kundali_parts.append("🌟 PLANETARY POSITIONS\n\n")
+                    
+                    # Find ascendant
+                    ascendant = next((p for p in planets_data if p['name'] == 'Ascendant'), None)
+                    if ascendant:
+                        kundali_parts.append(f"🔺 ASCENDANT (LAGNA): {ascendant['sign']} at {ascendant['normDegree']:.2f}°\n")
+                        kundali_parts.append(f"   Nakshatra: {ascendant['nakshatra']} (Pada {ascendant['nakshatra_pad']})\n\n")
+                    
+                    # Main planets
+                    for planet in planets_data:
+                        if planet['name'] != 'Ascendant':
+                            retro = " (R)" if planet.get('isRetro') == 'true' else ""
+                            kundali_parts.append(f"{planet['name']}: {planet['sign']} {planet['normDegree']:.2f}° - {planet['nakshatra']}{retro}\n")
+                    kundali_parts.append("\n")
+                except:
+                    pass
+                
+                # 3. Current Dasha
+                try:
+                    resp = await client.post(f"{ASTROLOGY_API_BASE_URL}current_vdasha", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
+                    dasha_data = resp.json()
+                    kundali_parts.append("⏰ CURRENT VIMSHOTTARI DASHA\n\n")
+                    kundali_parts.append(f"Maha Dasha: {dasha_data['major']['planet']} ({dasha_data['major']['start']} to {dasha_data['major']['end']})\n")
+                    kundali_parts.append(f"Antar Dasha: {dasha_data['minor']['planet']} ({dasha_data['minor']['start']} to {dasha_data['minor']['end']})\n")
+                    kundali_parts.append(f"Pratyantar: {dasha_data['sub_minor']['planet']}\n\n")
+                except:
+                    pass
+                
+                # 4. Rashi Chart
+                try:
+                    resp = await client.post(f"{ASTROLOGY_API_BASE_URL}horo_chart/D1", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
+                    chart_data = resp.json()
+                    kundali_parts.append("📊 RASHI CHART (D1)\n\n")
+                    
+                    # Format chart in a readable way
+                    for house in chart_data:
+                        if house['planet']:
+                            planets_str = ", ".join(house['planet'])
+                            kundali_parts.append(f"{house['sign_name']}: {planets_str}\n")
+                    kundali_parts.append("\n")
+                except:
+                    pass
+                
+                return "".join(kundali_parts) if kundali_parts else "Unable to generate complete kundali at this time."
+            
+            else:
+                # For non-kundali requests (remedies, etc.)
+                endpoint = f"{ASTROLOGY_API_BASE_URL}remedies"
+                payload["question"] = question
+                
+                response = await client.post(endpoint, json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
+                response.raise_for_status()
+                data = response.json()
+                return data.get("remedy") or data.get("answer") or str(data)
+                
         except Exception as e:
             logging.error(f"AstrologyAPI.com call failed: {e}")
-            return "Sorry, unable to fetch details from AstrologyAPI.com at this time."
+            return "Sorry, unable to fetch astrological details at this time."
 
 def _clean_json_string(text: str) -> str:
     """
