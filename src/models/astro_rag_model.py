@@ -9,6 +9,7 @@ class AIRequests(BaseModel):
     use_history: Optional[bool] = False
     session_id: Optional[str] = None
     user_name: Optional[str] = None  # User's name from the QnA section
+    user_info: Optional[Dict[str, Any]] = None  # Structured user info including birth details
 
 
 class AIResponses(BaseModel):

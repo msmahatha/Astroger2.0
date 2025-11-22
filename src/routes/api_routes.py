@@ -76,6 +76,7 @@ async def astro_rag_endpoint(
                 session_id=payload.session_id,
                 use_history=payload.use_history,
                 user_name=payload.user_name,
+                user_info=payload.user_info,
             )
         else:
             result = await process_question(
@@ -85,6 +86,7 @@ async def astro_rag_endpoint(
                 session_id=payload.session_id,
                 use_history=payload.use_history,
                 user_name=payload.user_name,
+                user_info=payload.user_info,
             )
 
         return AIResponses(**result)

@@ -131,6 +131,7 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
             "lon": lon,
             "tzone": tzone
         }
+        logging.info(f"AstrologyAPI Payload: {payload}")
     except (ValueError, AttributeError, KeyError) as e:
         logging.error(f"Failed to parse birth details: {e}")
         return "Unable to parse birth details. Please ensure you've provided complete information: birth date (DD Month YYYY), time (HH:MM), and place."
@@ -149,60 +150,67 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
                     kundali_parts.append(f"Date: {day:02d}/{month:02d}/{year}\n")
                     kundali_parts.append(f"Time: {hour:02d}:{minute:02d}\n")
                     kundali_parts.append(f"Place: {place}\n")
-                    kundali_parts.append(f"Ayanamsha: {birth_data.get('ayanamsha', 0):.2f}°\n")
+                    kundali_parts.append(f"Ayanamsha: {birth_data.get('ayanamsha', 'N/A')}\n")
                     kundali_parts.append(f"Sunrise: {birth_data.get('sunrise', 'N/A')}\n")
                     kundali_parts.append(f"Sunset: {birth_data.get('sunset', 'N/A')}\n\n")
-                except:
+                except Exception as e:
+                    logging.error(f"Birth Details API failed: {e}")
                     pass
-                
-                # 2. Planetary Positions
+
+                # 2. Planets
                 try:
                     resp = await client.post(f"{ASTROLOGY_API_BASE_URL}planets", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
                     planets_data = resp.json()
-                    kundali_parts.append("🌟 PLANETARY POSITIONS\n\n")
+                    kundali_parts.append(f"🌟 PLANETARY POSITIONS\n\n")
                     
-                    # Find ascendant
-                    ascendant = next((p for p in planets_data if p['name'] == 'Ascendant'), None)
-                    if ascendant:
-                        kundali_parts.append(f"🔺 ASCENDANT (LAGNA): {ascendant['sign']} at {ascendant['normDegree']:.2f}°\n")
-                        kundali_parts.append(f"   Nakshatra: {ascendant['nakshatra']} (Pada {ascendant['nakshatra_pad']})\n\n")
+                    # Ascendant
+                    for p in planets_data:
+                        if p.get("name") == "Ascendant":
+                            kundali_parts.append(f"🔺 ASCENDANT (LAGNA): {p.get('sign')} at {p.get('normDegree'):.2f}°\n")
+                            kundali_parts.append(f"   Nakshatra: {p.get('nakshatra')} (Pada {p.get('nakshatra_pad')})\n\n")
+                            break
                     
-                    # Main planets
-                    for planet in planets_data:
-                        if planet['name'] != 'Ascendant':
-                            retro = " (R)" if planet.get('isRetro') == 'true' else ""
-                            kundali_parts.append(f"{planet['name']}: {planet['sign']} {planet['normDegree']:.2f}° - {planet['nakshatra']}{retro}\n")
+                    # Other Planets
+                    for p in planets_data:
+                        if p.get("name") != "Ascendant":
+                            retro = " (R)" if p.get("isRetro") == "true" else ""
+                            kundali_parts.append(f"{p.get('name')}: {p.get('sign')} {p.get('normDegree'):.2f}° - {p.get('nakshatra')}{retro}\n")
                     kundali_parts.append("\n")
-                except:
+                except Exception as e:
+                    logging.error(f"Planets API failed: {e}")
                     pass
-                
+
                 # 3. Current Dasha
                 try:
                     resp = await client.post(f"{ASTROLOGY_API_BASE_URL}current_vdasha", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
                     dasha_data = resp.json()
-                    kundali_parts.append("⏰ CURRENT VIMSHOTTARI DASHA\n\n")
-                    kundali_parts.append(f"Maha Dasha: {dasha_data['major']['planet']} ({dasha_data['major']['start']} to {dasha_data['major']['end']})\n")
-                    kundali_parts.append(f"Antar Dasha: {dasha_data['minor']['planet']} ({dasha_data['minor']['start']} to {dasha_data['minor']['end']})\n")
-                    kundali_parts.append(f"Pratyantar: {dasha_data['sub_minor']['planet']}\n\n")
-                except:
+                    current_dasha = dasha_data.get("current_dasha", {})
+                    kundali_parts.append(f"⏰ CURRENT VIMSHOTTARI DASHA\n\n")
+                    if current_dasha:
+                         kundali_parts.append(f"Maha Dasha: {current_dasha.get('major_dasha')} ({current_dasha.get('start_date')} to {current_dasha.get('end_date')})\n")
+                         kundali_parts.append(f"Antar Dasha: {current_dasha.get('minor_dasha')}\n")
+                         kundali_parts.append(f"Pratyantar: {current_dasha.get('sub_minor_dasha')}\n\n")
+                except Exception as e:
+                    logging.error(f"Dasha API failed: {e}")
                     pass
-                
-                # 4. Rashi Chart
+
+                # 4. Rashi Chart (D1)
                 try:
                     resp = await client.post(f"{ASTROLOGY_API_BASE_URL}horo_chart/D1", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
                     chart_data = resp.json()
-                    kundali_parts.append("📊 RASHI CHART (D1)\n\n")
-                    
-                    # Format chart in a readable way
+                    kundali_parts.append(f"📊 RASHI CHART (D1)\n\n")
                     for house in chart_data:
-                        if house['planet']:
-                            planets_str = ", ".join(house['planet'])
+                        planets_in_house = house.get("planet", [])
+                        if planets_in_house:
+                            planets_str = ", ".join(planets_in_house).upper()
                             kundali_parts.append(f"{house['sign_name']}: {planets_str}\n")
                     kundali_parts.append("\n")
-                except:
+                except Exception as e:
+                    logging.error(f"Chart API failed: {e}")
                     pass
                 
-                return "".join(kundali_parts) if kundali_parts else "Unable to generate complete kundali at this time."
+                final_kundali = "".join(kundali_parts)
+                return final_kundali if kundali_parts else "Unable to generate complete kundali at this time."
             
             else:
                 # For non-kundali requests (remedies, etc.)
@@ -288,7 +296,8 @@ async def _core_process(
     religion: str,
     session_id: Optional[str],
     user_name: Optional[str],
-    perform_context_retrieval: bool
+    perform_context_retrieval: bool,
+    user_info: Optional[dict] = None
 ) -> dict:
     """
     Unified logic handler for both public processing functions.
@@ -337,12 +346,24 @@ async def _core_process(
     logging.info(f"Processing Question: '{question[:50]}...' | Astrology: {is_astrology_question} | Needs Remedy: {needs_remedy}")
 
     # Extract birth details from context if available
+    # Extract birth details from user_info (preferred) or context
     birth_details = {}
-    if context and isinstance(context, dict):
+    
+    # Priority 1: Use structured user_info if available
+    if user_info and isinstance(user_info, dict):
+        birth_fields = ["birthDate", "birthTime", "birthPlace", "birthLatitude", "birthLongitude"]
+        for field in birth_fields:
+            if field in user_info:
+                birth_details[field] = user_info[field]
+        logging.info(f"Extracted birth details from user_info: {birth_details}")
+        
+    # Priority 2: Fallback to context if birth details missing
+    if not birth_details and context and isinstance(context, dict):
         birth_fields = ["birthDate", "birthTime", "birthPlace", "birthLatitude", "birthLongitude"]
         for field in birth_fields:
             if field in context:
                 birth_details[field] = context[field]
+        logging.info(f"Extracted birth details from context: {birth_details}")
 
     # 5. Get AstrologyAPI.com Response (if astrology question) as enrichment
     api_enrichment = ""
@@ -476,6 +497,7 @@ async def process_question_with_context(
     session_id: Optional[str] = None,
     use_history: bool = False,
     user_name: Optional[str] = None,
+    user_info: Optional[dict] = None,
 ) -> dict:
     """
     Processes a question where the provided 'context' string is treated as 
@@ -490,7 +512,8 @@ async def process_question_with_context(
         religion=religion,
         session_id=session_id,
         user_name=user_name,
-        perform_context_retrieval=True # Explicitly retrieve based on context
+        perform_context_retrieval=True, # Explicitly retrieve based on context
+        user_info=user_info
     )
 
 
@@ -501,6 +524,7 @@ async def process_question(
     session_id: Optional[str] = None,
     use_history: bool = False,
     user_name: Optional[str] = None,
+    user_info: Optional[dict] = None,
 ) -> dict:
     """
     Processes a question where 'context' is treated purely as prompt background info,
@@ -515,5 +539,6 @@ async def process_question(
         religion=religion,
         session_id=session_id,
         user_name=user_name,
-        perform_context_retrieval=False # Do NOT retrieve based on context
+        perform_context_retrieval=False, # Do NOT retrieve based on context
+        user_info=user_info
     )
