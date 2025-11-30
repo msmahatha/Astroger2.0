@@ -21,6 +21,7 @@ if __name__ == "__main__":
     test_kundali_api()
 import re
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.schema import HumanMessage
@@ -39,6 +40,7 @@ from src.chat_memory.get_chat_history import (
     save_session_context,
     append_chat_turn,
 )
+from src.services.kundli import calculate_vimshottari_dasha, parse_birth_datetime
 
 # ---- Configuration & Constants ----
 
@@ -184,14 +186,61 @@ async def get_astrologyapi_remedy(question: str, birth_details: dict = None) -> 
                 try:
                     resp = await client.post(f"{ASTROLOGY_API_BASE_URL}current_vdasha", json=payload, auth=(ASTROLOGY_API_USER_ID, ASTROLOGY_API_KEY), timeout=10.0)
                     dasha_data = resp.json()
-                    current_dasha = dasha_data.get("current_dasha", {})
+                    
                     kundali_parts.append(f"⏰ CURRENT VIMSHOTTARI DASHA\n\n")
-                    if current_dasha:
-                         kundali_parts.append(f"Maha Dasha: {current_dasha.get('major_dasha')} ({current_dasha.get('start_date')} to {current_dasha.get('end_date')})\n")
-                         kundali_parts.append(f"Antar Dasha: {current_dasha.get('minor_dasha')}\n")
-                         kundali_parts.append(f"Pratyantar: {current_dasha.get('sub_minor_dasha')}\n\n")
+                    
+                    # Check if response has 'major', 'minor' keys directly
+                    if dasha_data and 'major' in dasha_data:
+                        major = dasha_data.get('major', {})
+                        minor = dasha_data.get('minor', {})
+                        sub_minor = dasha_data.get('sub_minor', {})
+                        
+                        kundali_parts.append(f"Maha Dasha: {major.get('planet')} ({major.get('start')} to {major.get('end')})\n")
+                        kundali_parts.append(f"Antar Dasha: {minor.get('planet')} ({minor.get('start')} to {minor.get('end')})\n")
+                        kundali_parts.append(f"Pratyantar: {sub_minor.get('planet')} ({sub_minor.get('start')} to {sub_minor.get('end')})\n\n")
+                    
+                    # Fallback to old structure if needed
+                    elif dasha_data.get("current_dasha"):
+                        current_dasha = dasha_data.get("current_dasha", {})
+                        kundali_parts.append(f"Maha Dasha: {current_dasha.get('major_dasha')} ({current_dasha.get('start_date')} to {current_dasha.get('end_date')})\n")
+                        kundali_parts.append(f"Antar Dasha: {current_dasha.get('minor_dasha')}\n")
+                        kundali_parts.append(f"Pratyantar: {current_dasha.get('sub_minor_dasha')}\n\n")
+
                 except Exception as e:
                     logging.error(f"Dasha API failed: {e}")
+                    pass
+
+                # 3.5 Major Maha Dasha (Local Calculation)
+                try:
+                    # Find Moon's longitude from planets data
+                    moon_long = None
+                    if 'planets_data' in locals() and planets_data:
+                        for p in planets_data:
+                            if p.get("name") == "Moon":
+                                moon_long = p.get("normDegree")
+                                break
+                    
+                    if moon_long is not None:
+                        # Parse birth datetime
+                        birth_dt = parse_birth_datetime(f"{day:02d}-{month:02d}-{year}", f"{hour:02d}:{minute:02d}")
+                        
+                        # Calculate Dasha
+                        major_dashas = calculate_vimshottari_dasha(moon_long, birth_dt)
+                        
+                        kundali_parts.append(f"🗓️ MAJOR MAHA DASHA PERIODS\n\n")
+                        for dasha in major_dashas:
+                            # Handle both dict and object (DashaPeriod)
+                            planet = getattr(dasha, 'planet', None) or dasha.get('planet')
+                            start = getattr(dasha, 'start_date', None) or dasha.get('start_date')
+                            end = getattr(dasha, 'end_date', None) or dasha.get('end_date')
+                            
+                            kundali_parts.append(f"{planet}: {start} to {end}\n")
+                        kundali_parts.append("\n")
+                    else:
+                        logging.warning("Moon longitude not found for Dasha calculation")
+
+                except Exception as e:
+                    logging.error(f"Major Dasha calculation failed: {e}")
                     pass
 
                 # 4. Rashi Chart (D1)
